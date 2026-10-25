@@ -613,6 +613,7 @@ def check_pylon_position_restore():
     load - regeneration is placement-algorithm dependent and can disagree
     with saved terrain (built/mined) or an older build's placement."""
     import json as _json
+    from citadel.save import save_game, load_game
     g = Game(headless=True, load=False)
     save_game(g, "/tmp/ppos.json")
     data = _json.load(open("/tmp/ppos.json"))
@@ -627,8 +628,8 @@ def check_pylon_position_restore():
     assert loaded == old_cols, f"pylon positions not restored: {loaded}"
     for p in g2.pylons.pylons:
         assert p.x == (p.col + 0.5) * config.TILE
-    _os.remove("/tmp/ppos.json")
-    _os.remove("/tmp/ppos_old.json")
+    os.remove("/tmp/ppos.json")
+    os.remove("/tmp/ppos_old.json")
     print("pylon position restore OK")
 
 

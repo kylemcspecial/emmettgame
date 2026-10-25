@@ -1,9 +1,8 @@
-"""Block types, hotbar inventory items, and the voxel world grid.
+"""Voxel grid world: generation, block queries, drops and regrowth.
 
-The world is a 2D side-on projection of the voxel grid (a common
-approach for lightweight voxel games on Raspberry Pi): the vertical
-axis stacks blocks, the horizontal axis is the world grid. Breaking
-and placing operate on the same grid Minecraft-style.
+Side-view 2D voxel grid. Layers: sky above terrain; grass/dirt/stone
+below; scattered resources (ancient oak, crystal, starlight, berry
+bushes, dark thorns) on the surface; a cave pocket underground.
 """
 import numpy as np
 
@@ -18,100 +17,112 @@ QUARTZ = 5
 CRYSTAL = 6
 STARLIGHT = 7
 THORNS = 8
-RUNE = 9
-PYLON_CORE = 10
-CASTLE_STONE = 11
+BERRY_BUSH = 9
+CASTLE_STONE = 10
+CASTLE_QUARTZ = 11
 
-BLOCK_COLORS = {
-    AIR: (0, 0, 0),
-    GRASS: (86, 158, 74),
-    DIRT: (122, 87, 51),
-    STONE: (128, 128, 140),
-    WOOD: (150, 108, 62),
-    QUARTZ: (232, 232, 238),
-    CRYSTAL: (120, 220, 255),
-    STARLIGHT: (255, 240, 160),
-    THORNS: (70, 46, 66),
-    RUNE: (190, 130, 255),
-    PYLON_CORE: (255, 214, 92),
-    CASTLE_STONE: (180, 190, 210),
+BLOCKS = {
+    AIR: ("Air", None),
+    GRASS: ("Grass", (100, 170, 80)),
+    DIRT: ("Dirt", (128, 92, 60)),
+    STONE: ("Stone", (135, 135, 145)),
+    WOOD: ("Ancient Oak", (150, 108, 62)),
+    QUARTZ: ("Quartz", (235, 235, 240)),
+    CRYSTAL: ("Crystal", (120, 220, 255)),
+    STARLIGHT: ("Starlight Stone", (255, 240, 160)),
+    THORNS: ("Dark Thorns", (70, 46, 66)),
+    BERRY_BUSH: ("Berry Bush", (60, 140, 70)),
+    CASTLE_STONE: ("Castle Stone", (185, 190, 205)),
+    CASTLE_QUARTZ: ("Castle Quartz", (250, 245, 255)),
 }
 
-BLOCK_NAMES = {
-    AIR: "Air",
-    GRASS: "Grass",
-    DIRT: "Dirt",
-    STONE: "Stone",
-    WOOD: "Ancient Oak",
-    QUARTZ: "Quartz",
-    CRYSTAL: "Crystal",
-    STARLIGHT: "Starlight Stone",
-    THORNS: "Dark Thorns",
-    RUNE: "Rune",
-    PYLON_CORE: "Pylon Core",
-    CASTLE_STONE: "Castle Stone",
+BREAKABLE = {GRASS, DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, THORNS, BERRY_BUSH}
+DROPS = {
+    GRASS: DIRT,
+    DIRT: DIRT,
+    STONE: STONE,
+    WOOD: WOOD,
+    QUARTZ: QUARTZ,
+    CRYSTAL: CRYSTAL,
+    STARLIGHT: STARLIGHT,
+    THORNS: None,
+    BERRY_BUSH: None,
 }
-
-BREAKABLE = {GRASS, DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, THORNS}
-PLACEABLE = {STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, CASTLE_STONE}
+PLACEABLE = {DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, CASTLE_STONE, CASTLE_QUARTZ}
+SOLID = {b for b in BLOCKS if b != AIR}
 
 
 class World:
-    """Voxel grid plus helper queries for building and breaking."""
-
-    def __init__(self, rng):
+    def __init__(self, rng, cols=None, rows=None):
         self.rng = rng
-        self.cols = config.WORLD_COLS
-        self.rows = config.WORLD_ROWS
+        self.cols = cols or config.WORLD_COLS
+        self.rows = rows or config.WORLD_ROWS
         self.grid = np.zeros((self.rows, self.cols), dtype=np.int16)
-        self._generate()
+        self.regrow = []  # (time_left, row, col, block)
+        self.generate()
 
-    def _generate(self):
-        ground = self.rows - 6
+    def generate(self):
+        ground = self.rows - 12
         heights = ground + np.clip(
-            np.sin(np.arange(self.cols) * 0.35) * 2
-            + self.rng.normal(0, 1.0, self.cols),
-            -3, 3,
+            np.sin(np.arange(self.cols) * 0.18) * 2
+            + self.rng.normal(0, 0.9, self.cols).cumsum() * 0.08,
+            -4, 4,
         ).astype(int)
         for c in range(self.cols):
             h = int(heights[c])
             self.grid[h, c] = GRASS
-            self.grid[h + 1 :, c] = DIRT
-            self.grid[self.rows - 2 :, c] = STONE
-        for _ in range(26):
-            c = self.rng.integers(2, self.cols - 2)
-            h = int(heights[c]) - 1
-            if self.grid[h, c] == AIR:
-                self.grid[h, c] = self.rng.choice([WOOD, CRYSTAL, STARLIGHT])
-        for _ in range(10):
-            c = self.rng.integers(4, self.cols - 4)
-            h = int(heights[c]) - 1
-            if self.grid[h, c] == AIR:
-                self.grid[h, c] = THORNS
-        self._carve_cave_pocket()
-        self.ground_heights = heights
+            self.grid[h + 1:, c] = DIRT
+            self.grid[self.rows - 4:, c] = STONE
+        self.heights = heights
+        self._scatter(WOOD, 30)
+        self._scatter(CRYSTAL, 16)
+        self._scatter(STARLIGHT, 10)
+        self._scatter(THORNS, 14)
+        self._scatter(BERRY_BUSH, 12)
+        self._caves()
 
-    def _carve_cave_pocket(self):
-        c0 = self.rng.integers(10, self.cols - 10)
-        r0 = self.rows - 10
-        for dr in range(3):
-            for dc in range(6):
-                self.grid[r0 + dr, c0 + dc] = AIR
-        self.grid[r0 + 3, c0 + 2] = CRYSTAL
+    def _scatter(self, block, n):
+        placed = 0
+        attempts = 0
+        while placed < n and attempts < n * 40:
+            attempts += 1
+            c = int(self.rng.integers(3, self.cols - 3))
+            h = int(self.heights[c])
+            r = h - 1
+            if 0 <= r and self.grid[r, c] == AIR:
+                self.grid[r, c] = block
+                placed += 1
+
+    def _caves(self):
+        for _ in range(5):
+            c0 = int(self.rng.integers(8, self.cols - 16))
+            r0 = int(self.rng.integers(self.rows - 14, self.rows - 6))
+            for dr in range(3):
+                for dc in range(int(5 + self.rng.integers(0, 3))):
+                    rr, cc = r0 + dr, c0 + dc
+                    if self.in_bounds(rr, cc):
+                        self.grid[rr, cc] = AIR
+            rr = min(self.rows - 1, r0 + 3)
+            cc = c0 + 2
+            if self.in_bounds(rr, cc) and self.grid[rr, cc] == AIR:
+                self.grid[rr, cc] = CRYSTAL
 
     def in_bounds(self, row, col):
         return 0 <= row < self.rows and 0 <= col < self.cols
 
     def get(self, row, col):
-        if not self.in_bounds(row, col):
-            return AIR
-        return int(self.grid[row, col])
+        if self.in_bounds(row, col):
+            return int(self.grid[row, col])
+        return AIR
 
     def set(self, row, col, block):
         if self.in_bounds(row, col):
             self.grid[row, col] = block
             return True
         return False
+
+    def is_solid(self, row, col):
+        return self.get(row, col) in SOLID
 
     def surface_row(self, col):
         for r in range(self.rows):
@@ -123,11 +134,35 @@ class World:
         block = self.get(row, col)
         if block in BREAKABLE:
             self.grid[row, col] = AIR
-            return block
-        return None
+            drop = DROPS.get(block)
+            if block == BERRY_BUSH:
+                return "berry", 2
+            if block == THORNS:
+                return None, 0
+            return drop, 1
+        return None, 0
 
     def place_block(self, row, col, block):
         if block in PLACEABLE and self.get(row, col) == AIR:
             self.grid[row, col] = block
             return True
         return False
+
+    def schedule_regrowth(self, row, col, block, delay=None):
+        delay = delay if delay is not None else config.REGROWTH_TIME
+        self.regrow.append([delay, row, col, block])
+
+    def update(self, dt):
+        still = []
+        for entry in self.regrow:
+            entry[0] -= dt
+            if entry[0] <= 0:
+                _, r, c, b = entry
+                if self.get(r, c) == AIR:
+                    self.grid[r, c] = b
+            else:
+                still.append(entry)
+        self.regrow = still
+
+    def counts(self):
+        return {name: int((self.grid == b).sum()) for b, (name, _) in BLOCKS.items() if b}

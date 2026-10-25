@@ -1,37 +1,41 @@
-"""Game constants: tuning values shared across modules."""
+"""Game constants and tuning values."""
 import numpy as np
 
 SCREEN_W = 1280
 SCREEN_H = 720
 FPS = 60
+TITLE = "Citadel of Friendship & Magic"
 
-WORLD_COLS = 64
-WORLD_ROWS = 48
-TILE = 24
-CAMERA_SPEED = 240.0
-PLAYER_SPEED = 150.0
-PLAYER_DRAW_R = 10
+WORLD_COLS = 220
+WORLD_ROWS = 64
+TILE = 32
+GRAVITY = 1500.0
+MOVE_SPEED = 260.0
+JUMP_VELOCITY = -560.0
+MAX_FALL = 900.0
+REACH = 5          # blocks
+BREAK_TIME = 0.35  # seconds per block
+WAND_COOLDOWN = 0.4
+CHARM_HEARTS = 3   # wand casts to befriend (base, GA-tuned per creature)
+REGROWTH_TIME = 25.0
+BERRY_FEED_HARMONY = 4.0
+SHADOW_SPEED = 26.0
+SAVE_PATH = "savegame.json"
+MAX_STACK = 99
 
-GA_MUTATION_RATE = 0.18
-SHADOW_SPEED = 38.0
-SHIELD_DECAY = 0.4
-HARMONY_DECAY = 0.5
-WAND_RANGE = 6
-WAND_COOLDOWN = 0.45
-CHARM_TIME = 1.2
-PYLON_REPAIR_BLOCKS = 4
 RNG_SEED = 20261025
 
 PALETTE = {
-    "bg": (18, 22, 34),
-    "grid": (36, 42, 60),
-    "panel": (24, 28, 42),
-    "text": (232, 238, 250),
-    "accent": (255, 214, 92),
+    "bg_top": (110, 150, 220),
+    "bg_bottom": (200, 220, 245),
+    "text": (30, 34, 48),
+    "panel": (246, 240, 225),
+    "panel_edge": (90, 70, 50),
+    "accent": (255, 190, 60),
     "wand": (150, 220, 255),
-    "harmony": (120, 255, 190),
-    "shadow": (40, 32, 50),
-    "danger": (255, 120, 120),
+    "harmony": (90, 200, 120),
+    "shadow": (30, 22, 40),
+    "danger": (220, 90, 90),
 }
 
-NUMPY_SEED = np.random.default_rng(RNG_SEED)
+RNG = np.random.default_rng(RNG_SEED)

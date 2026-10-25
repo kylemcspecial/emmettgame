@@ -1,4 +1,4 @@
-"""Main game loop: Citadel of Friendship & Magic."""
+"""Main game loop for Citadel of Friendship & Magic."""
 import os
 import sys
 
@@ -9,152 +9,333 @@ from . import config
 from .castle import Castle
 from .creatures import CreatureManager
 from .genetics import GeneticTuner
-from .inventory import Hotbar
+from .graphics import Particles, Textures
+from .inventory import BLOCK_TO_ITEM, DropManager, ITEMS
 from .player import Player
-from .pylons import PylonManager
+from .pylons import FriendshipShield, PylonManager, Shadow
 from .renderer import Renderer
-from .shadow import FriendshipShield, Shadow
+from .save import load_game, save_game
 from . import world as W
 
 
 class Game:
-    def __init__(self, headless=False):
-        os.environ.setdefault("SDL_VIDEODRIVER", "dummy" if headless else "x11")
+    def __init__(self, headless=False, load=True):
+        os.environ.setdefault(
+            "SDL_VIDEODRIVER", "dummy" if headless else "x11"
+        )
         pygame.init()
         self.headless = headless
         self.screen = pygame.display.set_mode((config.SCREEN_W, config.SCREEN_H))
-        pygame.display.set_caption("Citadel of Friendship & Magic")
+        pygame.display.set_caption(config.TITLE)
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 28)
+        self.font = pygame.font.Font(None, 30)
+        self.big = pygame.font.Font(None, 44)
         self.small = pygame.font.Font(None, 22)
         self.rng = np.random.default_rng(config.RNG_SEED)
+        self._fresh_state()
+        self.renderer = Renderer(
+            self.screen, self.font, self.big, self.small, Textures()
+        )
+        self.particles = Particles()
+        self.mode = "play"          # play | puzzle | inventory | victory
+        self.message = ""
+        self.message_t = 0.0
+        self.active_pylon = None
+        self.mouse_held = {"left": False, "right": False}
+        self.breaking = None        # (row, col, progress)
+        self.running = True
+        if load and not headless:
+            from .save import has_save
+            if has_save():
+                load_game(self)
+                self.notify("Welcome back! Your realm was restored.", 4)
+
+    def _fresh_state(self):
         self.world = W.World(self.rng)
         self.ga = GeneticTuner(self.rng)
-        self.hotbar = Hotbar()
         self.player = Player(self.world, col=8)
+        self.inventory = self._make_inventory()
         self.creatures = CreatureManager(self.rng, self.world, self.ga)
         self.pylons = PylonManager(self.rng, self.world, self.ga)
         self.castle = Castle(col=config.WORLD_COLS // 2)
-        self.shadow = Shadow(col=2.0)
+        self.shadow = Shadow(col=3)
         self.shield = FriendshipShield()
-        self.renderer = Renderer(self.screen, self.font, self.small)
-        self.active_pylon = None
-        self.message = ""
-        self.message_t = 0.0
-        self.pylon_timer = 0.0
-        self.running = True
+        self.drops = DropManager(self.rng)
 
-    def notify(self, text, duration=3.0):
+    def _make_inventory(self):
+        from .inventory import Inventory
+        inv = Inventory()
+        return inv
+
+    def notify(self, text, t=3.0):
         self.message = text
-        self.message_t = duration
+        self.message_t = t
+
+    # ---------------- input ----------------
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:
             self.running = False
-        elif event.type == pygame.KEYDOWN:
-            if pygame.K_1 <= event.key <= pygame.K_9:
-                self.hotbar.select(event.key - pygame.K_0)
-            elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                self.player.try_move(self.world, -1)
-            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                self.player.try_move(self.world, 1)
-            elif event.key == pygame.K_e:
-                self.notify("Friendship Ledger: " + ", ".join(
-                    c.name for c in self.creatures.creatures if c.befriended
-                ) or "No friends yet - go charm a creature!")
-        elif event.type == pygame.MOUSEWHEEL:
-            self.hotbar.cycle(1 if event.y > 0 else -1)
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if self.active_pylon and not self.active_pylon.restored:
+            return
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                if self.mode in ("puzzle", "inventory"):
+                    self.mode = "play"
+                else:
+                    self.running = False
                 return
+            if event.key == pygame.K_e:
+                self.mode = (
+                    "inventory" if self.mode == "play" else "play"
+                )
+                return
+            if self.mode != "play":
+                if event.key == pygame.K_r and self.mode == "victory":
+                    self.reset()
+                return
+            if pygame.K_1 <= event.key <= pygame.K_9:
+                self.inventory.select(event.key - pygame.K_0)
+            elif event.key == pygame.K_F5:
+                path = save_game(self)
+                self.notify(f"Realm saved to {os.path.basename(path)}")
+        elif event.type == pygame.MOUSEWHEEL:
+            if self.mode == "play":
+                self.inventory.cycle(1 if event.y > 0 else -1)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if self.mode == "puzzle" and event.button == 1:
+                self._puzzle_click(event.pos)
+            elif self.mode == "inventory" and event.button == 1:
+                self._backpack_click(event.pos)
+            elif self.mode == "play":
+                if event.button == 1:
+                    self.mouse_held["left"] = True
+                elif event.button == 3:
+                    self.mouse_held["right"] = True
+                    self._right_action(event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
-                self.cast_wand()
+                self.mouse_held["left"] = False
+                self.breaking = None
             elif event.button == 3:
-                self.use_block()
+                self.mouse_held["right"] = False
 
-    def screen_to_world(self, pos):
-        x, y = pos
-        col = (x - config.SCREEN_W // 2) // config.TILE + self.player.col
-        row = (y - config.SCREEN_H // 2) // config.TILE + self.player.row
-        return int(row), int(col)
+    def _puzzle_click(self, pos):
+        if not self.active_pylon:
+            return
+        for rune, rect in self.renderer.rune_rects.items():
+            if rect.collidepoint(pos):
+                result = self.active_pylon.click_rune(rune)
+                if result == "solved":
+                    self.notify("The pylon hums with warm light!")
+                    self.mode = "play"
+                    self.active_pylon = None
+                    self.shield.add_harmony(15, self.ga)
+                    self.ga.record_event("pylon", 10.0)
+                elif result == "correct":
+                    self.notify("The energy flows... keep going!")
+                else:
+                    self.notify("The runes dim. Feel the energy and try again.")
+                return
 
-    def cast_wand(self):
+    def _backpack_click(self, pos):
+        for (r, c), rect in self.renderer.backpack_rects.items():
+            if rect.collidepoint(pos):
+                item, count = self.inventory.backpack[r][c]
+                if item:
+                    if self.inventory.add(item, count):
+                        self.inventory.backpack[r][c] = (None, None)
+                        self.notify(f"Moved {ITEMS[item][0]} to hotbar.")
+                return
+
+    def _aim_tile(self, pos):
+        return self.renderer.cam.world_tile(*pos)
+
+    def _in_reach(self, row, col):
+        prow, pcol = self.player.tile()
+        return abs(row - prow) <= config.REACH and abs(col - pcol) <= config.REACH
+
+    def _left_action(self, pos):
+        row, col = self._aim_tile(pos)
+        if not self._in_reach(row, col):
+            return
+        held_item, _ = self.inventory.current_item()
+        if held_item == "wand":
+            creature = self.creatures.nearest(
+                col * config.TILE + config.TILE / 2,
+                row * config.TILE + config.TILE / 2,
+            )
+            if creature is not None:
+                self._cast_wand(creature)
+                return
+            pylon = self.pylons.near(
+                self.player.x, self.player.y, dist=config.TILE * 6
+            )
+            if pylon is not None and not pylon.restored:
+                self.active_pylon = pylon
+                self.mode = "puzzle"
+                self.notify("Ancient pylon awakened! Align the runes.")
+                return
+            if self.world.get(row, col) == W.THORNS:
+                self.world.set(row, col, W.AIR)
+                self.particles.emit(
+                    (col + 0.5) * config.TILE, (row + 0.5) * config.TILE,
+                    (150, 90, 180), 14,
+                )
+                self.shield.add_harmony(1.5, self.ga)
+                self.notify("Dark thorns cleared by wand light!")
+                return
+        block = self.world.get(row, col)
+        if block in W.BREAKABLE:
+            self.breaking = [row, col, 0.0]
+
+    def _cast_wand(self, creature):
         if self.player.wand_timer > 0:
             return
         self.player.wand_timer = config.WAND_COOLDOWN
-        if self.hotbar.current_block() is not None and self.hotbar.kind_of(self.hotbar.selected) == "wand":
-            return
-        creature = self.creatures.nearest_unbefriended(self.player)
-        if creature is not None:
-            result = creature.advance_charm()
-            self.notify(f"{creature.name}: charm {creature.charm_idx}/{len(creature.charm_seq)}")
-            if result:
-                self.creatures.befriend(creature, self.castle.col)
-                self.hotbar.set_charm(creature.species)
-                self.shield.add_harmony(12, self.ga)
-                self.ga.record_event("charm", config.CHARM_TIME)
-                self.notify(f"{creature.name} befriended! A guardian joins your citadel.")
-            return
-        pylon = self.pylons.nearest_unrestored(self.player)
-        if pylon is not None:
-            self.active_pylon = pylon
-            self.notify("Puzzle: click the runes in the lit order!")
-            return
-        row, col = self.screen_to_world(pygame.mouse.get_pos())
-        if 0 <= abs(col - self.player.col) <= config.WAND_RANGE:
-            block = self.world.get(row, col)
-            if block == W.THORNS:
-                self.world.set(row, col, W.AIR)
-                self.notify("Dark thorns cleared by wand light.")
-                self.shield.add_harmony(2, self.ga)
+        self.particles.emit(creature.x, creature.y, creature.color, 16)
+        done = creature.advance_charm()
+        if done:
+            self.creatures.befriend(creature, self.castle.x)
+            self.shield.add_harmony(10, self.ga)
+            self.ga.record_event("charm", 8.0)
+            self.notify(f"{creature.species} befriended! It will guard your citadel.")
+        else:
+            self.notify(
+                f"Charming {creature.species}... "
+                f"{creature.max_hearts - creature.hearts + 1}"
+                f"/{creature.max_hearts}"
+            )
 
-    def use_block(self):
-        row, col = self.screen_to_world(pygame.mouse.get_pos())
-        if abs(col - self.player.col) > config.WAND_RANGE:
+    def _right_action(self, pos):
+        row, col = self._aim_tile(pos)
+        held_item, _ = self.inventory.current_item()
+        creature = self.creatures.nearest(
+            pos[0] + self.renderer.cam.x, pos[1] + self.renderer.cam.y,
+            max_dist=config.TILE * 3,
+        )
+        if creature is not None and not creature.befriended:
+            if self.inventory.count("berry") > 0:
+                if self.inventory.consume("berry", 1):
+                    self.particles.emit(creature.x, creature.y, (255, 120, 140), 10)
+                    creature.hearts = max(0, creature.hearts - 1)
+                    self.shield.add_harmony(config.BERRY_FEED_HARMONY * 0.5, self.ga)
+                    self.notify(f"{creature.species} loves Sunberries!")
+                    if creature.hearts == 0:
+                        self.creatures.befriend(creature, self.castle.x)
+                        self.shield.add_harmony(6, self.ga)
+                        self.notify(f"{creature.species} befriended!")
+                    return
+        if not self._in_reach(row, col):
             return
-        kind = self.hotbar.kind_of(self.hotbar.selected)
-        if kind == "block":
-            block = self.hotbar.consume_current()
-            if block is not None and self.world.place_block(row, col, block):
-                gain = self.castle.register_block(row, col, block, self.creatures.creatures, self.ga)
-                if gain:
-                    self.shield.add_harmony(gain, self.ga)
-                    self.notify(f"Castle harmony +{gain:.1f}")
-        elif kind == "catalyst":
-            if self.hotbar.use_catalyst():
-                self.shield.add_harmony(10, self.ga)
-                self.notify("Shield catalyst released warmth into the land.")
+        block = self.inventory.current_placeable_block()
+        if block is not None and self.world.place_block(row, col, block):
+            self.inventory.consume_selected()
+            gain = self.castle.register_block(
+                row, col, block, self.creatures.creatures, self.ga
+            )
+            if gain:
+                self.shield.add_harmony(gain, self.ga)
+            self.particles.emit(
+                (col + 0.5) * config.TILE, (row + 0.5) * config.TILE,
+                (220, 220, 210), 6, speed=30,
+            )
+
+    def reset(self):
+        self.rng = np.random.default_rng(config.RNG_SEED + int(self.rng.integers(0, 99999)))
+        self._fresh_state()
+        self.mode = "play"
+        self.active_pylon = None
+        self.notify("A brand-new realm shimmers into being...", 4)
+
+    # ---------------- update ----------------
 
     def update(self, dt):
-        self.player.update(self.world, dt, 0)
-        self.creatures.update(self.world, dt)
-        self.pylons.update(dt)
-        strength = self.shield.strength(len(self.pylons.pylons), sum(
-            1 for p in self.pylons.pylons if p.restored))
-        drain = self.shadow.update(dt, strength, self.player.col, self.ga)
-        if drain:
-            self.shield.drain(drain)
         if self.message_t > 0:
             self.message_t -= dt
             if self.message_t <= 0:
                 self.message = ""
+        if self.mode == "victory":
+            return
+        keys = pygame.key.get_pressed()
+        axis = 0
+        if self.mode == "play":
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+                axis -= 1
+            if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+                axis += 1
+        jump = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+        self.player.update(self.world, dt, axis, jump)
+        self.creatures.update(self.world, dt, self.player.x)
+        self.pylons.update(dt)
+        self.world.update(dt)
+        self.drops.update(dt, self.player, self.inventory)
+        self.particles.update(dt)
+        restored = len(self.pylons.pylons) - len(self.pylons.unrestored())
+        strength = self.shield.strength(len(self.pylons.pylons), restored)
+        drain = self.shadow.update(dt, strength, self.player.x, self.ga,
+                                   self.shield.harmony)
+        if drain:
+            self.shield.drain(drain)
+            if int(self.clock.get_time()) % 120 == 0:
+                self.notify("The Shadow saps warmth... restore pylons and build harmony!", 2)
+        if self.shadow.banished and self.mode != "victory":
+            self.mode = "victory"
+        if self.mouse_held["left"] and self.mode == "play":
+            pos = pygame.mouse.get_pos()
+            row, col = self._aim_tile(pos)
+            if self.breaking and self.breaking[0] == row and self.breaking[1] == col:
+                self.breaking[2] += dt
+                if self.breaking[2] >= config.BREAK_TIME:
+                    self._finish_break(row, col)
+            else:
+                self.breaking = None
+                held_item, _ = self.inventory.current_item()
+                if held_item != "wand":
+                    self._left_action(pos)
+
+    def _finish_break(self, row, col):
+        self.breaking = None
+        drop, n = self.world.break_block(row, col)
+        if drop:
+            if drop in BLOCK_TO_ITEM:
+                drop = BLOCK_TO_ITEM[drop]
+            self.drops.spawn(
+                drop, (col + 0.5) * config.TILE, (row + 0.5) * config.TILE, n
+            )
+            self.particles.emit(
+                (col + 0.5) * config.TILE, (row + 0.5) * config.TILE,
+                (200, 200, 190), 10, speed=50,
+            )
+            if drop == "berry":
+                self.world.schedule_regrowth(row, col, W.BERRY_BUSH)
+            self.shield.add_harmony(0.2, self.ga)
+
+    # ---------------- draw ----------------
 
     def draw(self):
-        self.renderer.draw_world(self.world, self.player)
-        self.renderer.draw_pylons(self.pylons.pylons, self.player)
-        self.renderer.draw_creatures(self.creatures.creatures, self.player)
-        self.renderer.draw_shadow(self.shadow, self.player)
-        self.renderer.draw_player(self.player)
-        self.renderer.draw_hud(
-            self.hotbar,
-            self.shield.strength(len(self.pylons.pylons), sum(
-                1 for p in self.pylons.pylons if p.restored)),
-            self.shield.harmony,
-            self.ga,
-            self.message if self.message_t > 0 else "",
-        )
-        if self.active_pylon and not self.active_pylon.restored:
-            self.renderer.draw_puzzle(self.active_pylon)
+        r = self.renderer
+        r.cam.follow(self.player.x, self.player.y, 1 / config.FPS)
+        r.draw_world(self.world)
+        r.draw_pylons(self.pylons.pylons)
+        r.draw_drops(self.drops.drops)
+        r.draw_creatures(self.creatures.creatures)
+        r.draw_shadow(self.shadow)
+        r.draw_player(self.player)
+        self.particles.draw(self.screen, r.cam)
+        if self.mode == "play":
+            pos = pygame.mouse.get_pos()
+            row, col = self._aim_tile(pos)
+            r.highlight_tile(row, col, self._in_reach(row, col))
+            if self.breaking:
+                r.highlight_tile(self.breaking[0], self.breaking[1], True)
+        r.draw_hud(self)
+        r.draw_message(self.message if self.message_t > 0 else "")
+        if self.mode == "puzzle" and self.active_pylon:
+            r.draw_puzzle(self.active_pylon)
+        elif self.mode == "inventory":
+            r.draw_inventory_screen(self)
+        elif self.mode == "victory":
+            r.draw_victory()
         pygame.display.flip()
 
     def frame(self):

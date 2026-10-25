@@ -54,6 +54,41 @@ def _melody(notes, note_dur, volume=0.16, shape="sine"):
 C4, D4, E4, G4, A4, C5, E5, G5 = 262, 294, 330, 392, 440, 523, 659, 784
 
 
+def _noise(dur, volume=0.12, lowpass=True):
+    """Soft wind: filtered noise with slow amplitude swell."""
+    n = int(SAMPLE_RATE * dur)
+    rng = np.random.default_rng(3)
+    noise = rng.normal(0, 1, n)
+    if lowpass:
+        kernel = np.ones(220) / 220.0
+        noise = np.convolve(noise, kernel, mode="same")
+    t = np.arange(n) / SAMPLE_RATE
+    swell = 0.6 + 0.4 * np.sin(2 * np.pi * t / dur)
+    arr = (noise * swell * volume * 32767 * 0.5).astype(np.int16)
+    return pygame.sndarray.make_sound(
+        np.ascontiguousarray(np.column_stack([arr, arr])))
+
+
+def _birds(dur=6.0, volume=0.05):
+    """Sparse bird chirps over silence."""
+    n = int(SAMPLE_RATE * dur)
+    wave = np.zeros(n)
+    rng = np.random.default_rng(11)
+    for _ in range(6):
+        start = int(rng.uniform(0.05, 0.9) * n)
+        chirp_len = int(0.12 * SAMPLE_RATE)
+        if start + chirp_len >= n:
+            continue
+        base = float(rng.uniform(1800, 3200))
+        tt = np.arange(chirp_len) / SAMPLE_RATE
+        chirp = np.sin(2 * np.pi * (base + 600 * tt / 0.12) * tt)
+        env = np.exp(-18 * tt)
+        wave[start:start + chirp_len] += chirp * env
+    arr = (wave * volume * 32767).astype(np.int16)
+    return pygame.sndarray.make_sound(
+        np.ascontiguousarray(np.column_stack([arr, arr])))
+
+
 class Sounds:
     """Lazily built sound bank; no-ops safely without an audio device."""
 
@@ -95,6 +130,18 @@ class Sounds:
             )
             tune.play(loops=-1)
             self.music_on = True
+        except Exception:
+            pass
+
+    def start_ambient(self, night=False):
+        """Looping wind; birds by day. Safe no-op without audio."""
+        if not self.enabled or getattr(self, "_ambient_on", False):
+            return
+        try:
+            _noise(8.0, volume=0.05).play(loops=-1)
+            if not night:
+                _birds().play(loops=-1, fade_ms=500)
+            self._ambient_on = True
         except Exception:
             pass
 

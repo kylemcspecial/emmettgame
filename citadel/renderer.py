@@ -289,6 +289,28 @@ class Renderer:
                 pygame.draw.circle(surf, (*c, 90), (3, 3), 2)
                 s.blit(surf, (int(x) - 3, int(y) - 3))
 
+    def draw_fountain(self, fountain, world):
+        col = fountain.col
+        row = world.surface_row(col)
+        x, y = self.cam.apply((col + 0.5) * config.TILE,
+                              row * config.TILE)
+        basin = pygame.Rect(x - 14, y - 10, 28, 10)
+        pygame.draw.ellipse(self.screen, (120, 200, 235), basin)
+        pygame.draw.ellipse(self.screen, (90, 70, 50), basin, 2)
+        pillar = pygame.Rect(x - 4, y - 30, 8, 22)
+        pygame.draw.rect(self.screen, (200, 205, 215), pillar)
+        t = pygame.time.get_ticks() * 0.004
+        for i in range(3):
+            yy = y - 30 + (i * 6) + 3 * np.sin(t + i)
+            pygame.draw.circle(self.screen, (170, 225, 250),
+                               (x + int(4 * np.sin(t * 1.3 + i)), int(yy)), 3)
+        label = self.small.render("Blessing Fountain", True, (90, 60, 40))
+        bg = label.get_rect(topleft=(x - label.get_width() // 2, y - 52))
+        bg.inflate_ip(8, 5)
+        pygame.draw.rect(self.screen, (255, 245, 210), bg, border_radius=5)
+        pygame.draw.rect(self.screen, (90, 70, 50), bg, 2, border_radius=5)
+        self.screen.blit(label, (bg.x + 4, bg.y + 2))
+
     def draw_castle_banner(self, castle, world):
         col = castle.col
         row = world.surface_row(col)
@@ -533,6 +555,15 @@ class Renderer:
             "Castle: place quartz, crystal, starlight, oak, or castle blocks near the "
             "heart of the realm to raise Harmony.", True, (80, 65, 50))
         s.blit(line3, (panel.x + 24, y)); y += 40
+        got = sum(1 for d in game.achievements.DEFS
+                  if d[0] in game.achievements.unlocked)
+        badge_row = self.font.render(
+            "Badges:  " + " ".join(
+                "\u2605" if d[0] in game.achievements.unlocked else "\u2606"
+                for d in game.achievements.DEFS
+            ) + f"   ({got}/{len(game.achievements.DEFS)})",
+            True, (200, 150, 60))
+        s.blit(badge_row, (panel.x + 24, y)); y += 30
         inv = self.font.render(
             "Backpack (click: to hotbar. Right-click a hotbar slot below: to backpack)",
             True, config.PALETTE["text"])

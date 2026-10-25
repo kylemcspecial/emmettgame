@@ -51,6 +51,7 @@ def save_game(game, path=None):
             "x": game.shadow.x, "banished": game.shadow.banished,
         },
         "ga": game.ga.to_dict(),
+        "achievements": game.achievements.to_dict(),
         "drops": [
             {"item": d.item, "x": d.x, "y": d.y} for d in game.drops.drops
         ],
@@ -110,6 +111,8 @@ def load_game(game, path=None):
     game.shadow.x = data["shadow"]["x"]
     game.shadow.banished = data["shadow"]["banished"]
     game.ga.load_dict(data["ga"])
+    if hasattr(game, "achievements"):
+        game.achievements.load_dict(data.get("achievements", {}))
     from .inventory import DropManager, Drop
     game.drops = DropManager(game.rng)
     for d in data.get("drops", []):

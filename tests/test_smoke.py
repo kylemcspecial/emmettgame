@@ -430,6 +430,50 @@ def main():
     g8.renderer.screen = g8.screen
     assert g8.renderer.screen is g8.screen
 
+    # --- PR5 endgame checks ---
+
+    # blessing fountain: recipes convert surplus into castle blocks
+    from citadel.fountain import Fountain, RECIPES
+    f = Fountain(game.castle)
+    before = game.inventory.count("stone")
+    game.inventory.add("stone", 10)
+    out = f.bless("stone", game.inventory)
+    assert out == "castle_stone"
+    assert game.inventory.count("stone") == before + 6
+    out2 = f.bless("starlight", game.inventory)
+    assert out2 is None  # not enough starlight
+    game.inventory.add("starlight", 2)
+    assert f.bless("starlight", game.inventory) == "castle_quartz"
+    assert game.inventory.count("starlight") == 0
+
+    # achievements unlock from state and persist
+    g9 = Game(headless=True, load=False)
+    g9.mode = "play"
+    c9 = g9.creatures.creatures[0]
+    while not c9.befriended:
+        g9.player.wand_timer = 0
+        g9._cast_wand(c9)
+    g9.achievements.update(0.0)
+    assert "first_friend" in g9.achievements.unlocked
+    for _ in range(10):
+        g9.achievements.event_berry_harvest()
+    assert "green_thumb" in g9.achievements.unlocked
+    path5 = save_game(g9, "/tmp/test_save5.json")
+    g10 = Game(headless=True, load=False)
+    load_game(g10, "/tmp/test_save5.json")
+    assert "first_friend" in g10.achievements.unlocked
+    assert g10.achievements.berries == 10
+    _os.remove(path5)
+
+    # fountain + achievements render without crash
+    g10.mode = "play"
+    g10.frame()
+    g10.mode = "inventory"
+    g10.frame()
+    g10.mode = "play"
+    g10.achievements.toasts.append(["T", "s", 1.0])
+    g10.frame()
+
     print("SMOKE TEST PASSED")
     pygame.quit()
 

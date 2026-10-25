@@ -465,7 +465,9 @@ class Game:
                 self.notify("The catalyst bursts into warm light! Harmony +12")
                 self.sounds.play("catalyst")
             return
-        if self.fountain.in_range(pos[0] + self.renderer.cam.x, 0):
+        if self.fountain.in_range(pos[0] + self.renderer.cam.x,
+                                  pos[1] + self.renderer.cam.y,
+                                  world=self.world):
             need = self.fountain.amount_needed(held_item)
             if held_item and need is not None:
                 out = self.fountain.bless(held_item, self.inventory)
@@ -488,6 +490,10 @@ class Game:
         if not self._in_reach(row, col):
             return
         block = self.inventory.current_placeable_block()
+        if block is not None and col == self.fountain.col \
+                and row <= self.world.surface_row(col):
+            self.notify("The fountain sparkles - nothing can be placed on it!", 2)
+            return
         if block is not None and self.world.place_block(row, col, block):
             self.inventory.consume_selected()
             self.sounds.play("place")
@@ -583,6 +589,9 @@ class Game:
 
     def _finish_break(self, row, col):
         self.breaking = None
+        if col == self.fountain.col and abs(row - self.world.surface_row(col)) <= 2:
+            self.notify("The fountain is ancient and unbreakable!", 2)
+            return
         block = self.world.get(row, col)
         block_col = W.BLOCKS.get(block, ("", (200, 200, 190)))[1]
         drop, n = self.world.break_block(row, col)

@@ -23,9 +23,25 @@ class Fountain:
         self.col = castle.col - 2
         self.x = (self.col + 0.5) * config.TILE
 
-    def in_range(self, x, y, dist=None):
-        dist = dist or config.TILE * 3
-        return ((self.x - x) ** 2) ** 0.5 <= dist
+    def world_pos(self, world):
+        """Current world position: follows the terrain under it."""
+        row = world.surface_row(self.col)
+        self.y = (row - 1) * config.TILE + config.TILE / 2
+        return self.x, self.y
+
+    def in_range(self, x, y, world=None, dist=None):
+        """True only when the click is near the fountain's spout."""
+        if y is None:
+            return False
+        if world is not None:
+            fx, fy = self.world_pos(world)
+        else:
+            fy = getattr(self, "y", None)
+            if fy is None:
+                return False
+            fx = self.x
+        dist = dist or config.TILE * 2
+        return (((fx - x) ** 2 + (fy - y) ** 2) ** 0.5 <= dist)
 
     def recipe_for(self, item):
         return RECIPES.get(item)

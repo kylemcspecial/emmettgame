@@ -474,6 +474,23 @@ def main():
     g10.achievements.toasts.append(["T", "s", 1.0])
     g10.frame()
 
+    # --- PR5 review regression checks ---
+
+    # fountain range is a real 2D radius around the spout
+    g11 = Game(headless=True, load=False)
+    g11.mode = "play"
+    fx, fy = g11.fountain.world_pos(g11.world)
+    assert g11.fountain.in_range(fx, fy, world=g11.world)
+    assert not g11.fountain.in_range(fx, fy - config.TILE * 5, world=g11.world)
+    assert not g11.fountain.in_range(fx + config.TILE * 4, fy, world=g11.world)
+
+    # fountain column is protected from digging
+    col_f = g11.fountain.col
+    surf_f = g11.world.surface_row(col_f)
+    before_f = g11.world.get(surf_f - 1, col_f)
+    g11._finish_break(surf_f - 1, col_f)
+    assert g11.world.get(surf_f - 1, col_f) == before_f
+
     print("SMOKE TEST PASSED")
     pygame.quit()
 

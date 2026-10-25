@@ -554,7 +554,12 @@ class Renderer:
         line3 = self.font.render(
             "Castle: place quartz, crystal, starlight, oak, or castle blocks near the "
             "heart of the realm to raise Harmony.", True, (80, 65, 50))
-        s.blit(line3, (panel.x + 24, y)); y += 40
+        line3b = self.small.render(
+            "Tip: keep some of each material! Creatures love living beside their "
+            "favorite blocks - the fountain blesses only your surplus.",
+            True, (110, 90, 70))
+        s.blit(line3, (panel.x + 24, y)); y += 26
+        s.blit(line3b, (panel.x + 24, y)); y += 22
         got = sum(1 for d in game.achievements.DEFS
                   if d[0] in game.achievements.unlocked)
         badge_row = self.font.render(

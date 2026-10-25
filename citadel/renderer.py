@@ -199,11 +199,14 @@ class Renderer:
         s = self.screen
         night_amt = max(0.0, np.sin((day_t - 0.25) * 2 * np.pi))
         if 0.15 < night_amt < 0.85:
-            # golden-hour tint during transitions
+            # golden-hour tint during transitions: BLEND_RGB_ADD ignores
+            # alpha, so pre-scale the color by the intended strength
+            strength = 26 / 255
+            warm = (int(255 * strength), int(180 * strength), int(90 * strength))
             if self._tint is None:
                 self._tint = pygame.Surface(
                     (config.SCREEN_W, config.SCREEN_H), pygame.SRCALPHA)
-            self._tint.fill((255, 180, 90, 26))
+            self._tint.fill(warm)
             s.blit(self._tint, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
         if night_amt > 0.4 and not config.PERFORMANCE_MODE:
             if self._vignette is None:

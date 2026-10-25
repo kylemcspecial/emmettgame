@@ -187,6 +187,44 @@ class Renderer:
             num = self.small.render(str(i + 1), True, (120, 105, 90))
             s.blit(num, (rect.x + 3, rect.y + 2))
 
+    def draw_quests(self, game):
+        s = self.screen
+        friends = sum(1 for c in game.creatures.creatures if c.befriended)
+        total_friends = len(game.creatures.creatures)
+        restored = len(game.pylons.pylons) - len(game.pylons.unrestored())
+        total_pylons = len(game.pylons.pylons)
+        harmony = game.shield.harmony
+        quests = [
+            (f"Befriend creatures ({friends}/{total_friends})", friends >= total_friends),
+            (f"Restore pylons ({restored}/{total_pylons})", restored >= total_pylons),
+            ("Fill Harmony to 100", harmony >= 100),
+        ]
+        done = all(ok for _, ok in quests)
+        x, y = config.SCREEN_W - 300, 14
+        panel = pygame.Rect(x, y, 286, 30 + 26 * len(quests))
+        pygame.draw.rect(s, (245, 240, 225), panel, border_radius=8)
+        pygame.draw.rect(s, (90, 70, 50), panel, 2, border_radius=8)
+        title = self.font.render(
+            "Your Quests" if not done else "All quests complete!",
+            True, config.PALETTE["text"],
+        )
+        s.blit(title, (x + 12, y + 6))
+        for i, (text, ok) in enumerate(quests):
+            yy = y + 34 + i * 26
+            box = pygame.Rect(x + 12, yy + 2, 14, 14)
+            pygame.draw.rect(s, (120, 200, 120) if ok else (230, 230, 230),
+                             box, border_radius=3)
+            if ok:
+                pygame.draw.line(s, (255, 255, 255), (box.x + 3, box.y + 7),
+                                 (box.x + 6, box.y + 10), 2)
+                pygame.draw.line(s, (255, 255, 255), (box.x + 6, box.y + 10),
+                                 (box.x + 11, box.y + 4), 2)
+            else:
+                pygame.draw.rect(s, (150, 140, 130), box, 2, border_radius=3)
+            label = self.small.render(text, True,
+                                      (110, 100, 90) if ok else (60, 50, 40))
+            s.blit(label, (x + 34, yy))
+
     def draw_message(self, message):
         if not message:
             return

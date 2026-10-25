@@ -47,8 +47,28 @@ class Game:
         if load and not headless:
             from .save import has_save
             if has_save():
-                load_game(self)
-                self.notify("Welcome back! Your realm was restored.", 4)
+                try:
+                    load_game(self)
+                    self.notify("Welcome back! Your realm was restored.", 4)
+                except Exception:
+                    self._fresh_state()
+                    self.notify(
+                        "Your old realm could not be opened, so a brand-new "
+                        "one was made just for you!", 5,
+                    )
+        else:
+            self.notify(
+                "Welcome, wizard! A/D to walk, W to jump. Cast your wand "
+                "(left click) at creatures to make friends!", 6,
+            )
+
+    def shutdown(self):
+        try:
+            if not self.headless:
+                save_game(self)
+        except Exception:
+            pass
+        self.running = False
 
     def _fresh_state(self):
         self.world = W.World(self.rng)
@@ -75,14 +95,14 @@ class Game:
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:
-            self.running = False
+            self.shutdown()
             return
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 if self.mode in ("puzzle", "inventory"):
                     self.mode = "play"
                 else:
-                    self.running = False
+                    self.shutdown()
                 return
             if event.key == pygame.K_e:
                 self.mode = (
@@ -329,6 +349,8 @@ class Game:
             if self.breaking:
                 r.highlight_tile(self.breaking[0], self.breaking[1], True)
         r.draw_hud(self)
+        if self.mode in ("play", "puzzle", "inventory"):
+            r.draw_quests(self)
         r.draw_message(self.message if self.message_t > 0 else "")
         if self.mode == "puzzle" and self.active_pylon:
             r.draw_puzzle(self.active_pylon)

@@ -83,6 +83,7 @@ def load_game(game, path=None):
     game.world.regrow = [list(r) for r in w.get("regrow", [])]
     if hasattr(game, "renderer") and game.renderer is not None:
         game.renderer._world_surf = None
+        game.renderer.cam._snap_next = True
     p = data["player"]
     game.player.x, game.player.y = p["x"], p["y"]
     game.player.facing = p.get("facing", 1)
@@ -104,6 +105,13 @@ def load_game(game, path=None):
         live.target_seq = saved["target_seq"]
         live.shield_radius = saved["shield_radius"]
         live.awakened = saved.get("awakened", live.pid == 0)
+        # restore the saved position: generation is placement-algorithm
+        # dependent, so regenerated coords can disagree with the saved
+        # world (built/mined terrain, or an older build's placement)
+        live.col = int(saved["col"])
+        live.row = int(saved["row"])
+        live.x = (live.col + 0.5) * config.TILE
+        live.y = (live.row + 0.5) * config.TILE
     cast = data["castle"]
     game.castle.blocks = {(r, c): b for r, c, b in cast["blocks"]}
     game.castle.rating = cast["rating"]

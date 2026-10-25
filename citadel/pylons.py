@@ -57,8 +57,16 @@ class PylonManager:
     def __init__(self, rng, world, ga):
         self.rng = rng
         self.pylons = []
-        cols = rng.choice(np.arange(12, config.WORLD_COLS - 12), size=5, replace=False)
-        cols = np.sort(cols)
+        castle_col = getattr(world, "castle_col", config.WORLD_COLS // 2)
+        # the first pylon (the only one awake at start) sits within sight of
+        # the spawn, so a kid sees it immediately; the rest spread across
+        # the realm and awaken one by one
+        first_col = castle_col - 14
+        cols = [first_col]
+        pool = [c for c in range(16, config.WORLD_COLS - 12)
+                if abs(c - first_col) > 6 and abs(c - castle_col) > 6]
+        picked = rng.choice(pool, size=4, replace=False)
+        cols.extend(int(c) for c in picked)
         for i, col in enumerate(cols):
             col = int(col)
             row = world.surface_row(col) - 1

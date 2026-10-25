@@ -572,3 +572,65 @@ def check_graphics_upgrades():
 
 
 check_graphics_upgrades()
+
+
+def check_spawn_experience():
+    """Emmett-feedback regressions: no sky-scroll on start, castle visible
+    from spawn, first pylon nearby and awake, drops auto-collect."""
+    import pygame
+    g = Game(headless=True, load=False)
+    g.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    g.frame()  # first frame
+    # camera snapped, not lerping from origin
+    target_y = g.player.y - config.SCREEN_H / 2
+    assert abs(g.renderer.cam.y - target_y) < 1.0, \
+        f"camera must snap on first frame: {g.renderer.cam.y} vs {target_y}"
+    # player spawns near the castle site
+    pc = g.player.tile()[1]
+    assert abs(g.castle.col - pc) <= 12, \
+        f"castle ({g.castle.col}) should be visible from spawn ({pc})"
+    # first pylon is awake and within ~2 screens
+    p0 = g.pylons.pylons[0]
+    assert p0.awakened
+    assert abs(p0.col - pc) <= 40
+    # drop magnet: nearby loot gets collected within 2 seconds
+    pr = g.player.tile()[0]
+    g.world.break_block(pr - 2, pc + 1)
+    g.drops.spawn("dirt", (pc + 1.5) * config.TILE,
+                  (pr - 1.5) * config.TILE, 1)
+    before = g.inventory.count("dirt")
+    for _ in range(120):
+        g.frame()
+    assert g.inventory.count("dirt") > before, "drops must auto-collect"
+    print("spawn experience OK")
+
+
+check_spawn_experience()
+
+
+def check_pylon_position_restore():
+    """Codex review finding: saved pylon positions must be restored on
+    load - regeneration is placement-algorithm dependent and can disagree
+    with saved terrain (built/mined) or an older build's placement."""
+    import json as _json
+    from citadel.save import save_game, load_game
+    g = Game(headless=True, load=False)
+    save_game(g, "/tmp/ppos.json")
+    data = _json.load(open("/tmp/ppos.json"))
+    old_cols = [39, 42, 46, 134, 135]  # an old-build save's locations
+    for s, c in zip(data["pylons"], old_cols):
+        s["col"] = c
+        s["row"] = g.world.surface_row(c) - 1
+    _json.dump(data, open("/tmp/ppos_old.json", "w"))
+    g2 = Game(headless=True, load=False)
+    load_game(g2, "/tmp/ppos_old.json")
+    loaded = [p.col for p in g2.pylons.pylons]
+    assert loaded == old_cols, f"pylon positions not restored: {loaded}"
+    for p in g2.pylons.pylons:
+        assert p.x == (p.col + 0.5) * config.TILE
+    os.remove("/tmp/ppos.json")
+    os.remove("/tmp/ppos_old.json")
+    print("pylon position restore OK")
+
+
+check_pylon_position_restore()

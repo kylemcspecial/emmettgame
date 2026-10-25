@@ -3,7 +3,7 @@ import numpy as np
 
 from . import config
 from .world import (AIR, BERRY_BUSH, CASTLE_QUARTZ, CASTLE_STONE, CRYSTAL,
-                    DIRT, QUARTZ, STARLIGHT, STONE, THORNS, WOOD)
+                    DIRT, QUARTZ, RUNE_KEY_BLOCK, STARLIGHT, STONE, THORNS, WOOD)
 
 ITEMS = {
     "wand": ("Magic Wand", (150, 220, 255)),
@@ -24,6 +24,7 @@ BLOCK_TO_ITEM = {
     DIRT: "dirt", STONE: "stone", WOOD: "wood", QUARTZ: "quartz",
     CRYSTAL: "crystal", STARLIGHT: "starlight",
     CASTLE_STONE: "castle_stone", CASTLE_QUARTZ: "castle_quartz",
+    RUNE_KEY_BLOCK: "rune_key",
 }
 ITEM_TO_BLOCK = {v: k for k, v in BLOCK_TO_ITEM.items()}
 
@@ -86,6 +87,27 @@ class Inventory:
             return item
         return None
 
+    def hotbar_slot(self, r, c):
+        """Ledger helper: treat (r, c) as a hotbar index when valid."""
+        if 0 <= c < 9 and r == 0:
+            return self.hotbar[c]
+        return (None, None)
+
+    def to_backpack(self, r, c):
+        """Move a hotbar item into a free backpack slot."""
+        if r != 0 or not (0 <= c < 9):
+            return False
+        item, count = self.hotbar[c]
+        if not item:
+            return False
+        for rr in range(3):
+            for cc in range(9):
+                if self.backpack[rr][cc][0] is None:
+                    self.backpack[rr][cc] = (item, count)
+                    self.hotbar[c] = (None, None)
+                    return True
+        return False
+
     def consume(self, item, amount=1):
         for i, (it, ct) in enumerate(self.hotbar):
             if it == item and ct and ct >= amount:
@@ -133,9 +155,10 @@ class Drop:
 
 
 class DropManager:
-    def __init__(self, rng):
+    def __init__(self, rng, sounds=None):
         self.rng = rng
         self.drops = []
+        self.sounds = sounds
 
     def spawn(self, item, x, y, count=1):
         for _ in range(count):
@@ -150,4 +173,6 @@ class DropManager:
             if abs(d.x - px) < magnet and abs(d.y - py) < magnet:
                 if inventory.add(d.item, 1):
                     picked.append(d)
+                    if self.sounds is not None:
+                        self.sounds.play("pickup")
         self.drops = [d for d in self.drops if d not in picked and d.age < 120]

@@ -91,6 +91,32 @@ class Renderer:
         else:
             self.screen.blit(self.wizard, rect)
 
+    def draw_castle_banner(self, castle, world):
+        col = castle.col
+        row = world.surface_row(col)
+        x, y = self.cam.apply((col + 0.5) * config.TILE,
+                              (row - 2) * config.TILE)
+        pole = pygame.Rect(x - 3, y - config.TILE * 2, 6, config.TILE * 2)
+        pygame.draw.rect(self.screen, (120, 90, 60), pole)
+        wave = 3 * np.sin(pygame.time.get_ticks() * 0.004)
+        flag = pygame.Rect(x + 3, y - config.TILE * 2, 44, 26)
+        pygame.draw.polygon(self.screen, (255, 120, 110), [
+            (flag.x, flag.y + wave),
+            (flag.right, flag.y + 6 + wave),
+            (flag.right, flag.y + flag.h + wave),
+            (flag.x, flag.y + flag.h + wave),
+        ])
+        pygame.draw.circle(self.screen, (255, 214, 92),
+                           (flag.x + 12, flag.y + 13 + wave), 5)
+        label = self.small.render("Build your citadel here!", True, (90, 60, 40))
+        bg = label.get_rect(
+            topleft=(x - label.get_width() // 2 + 20,
+                     y - config.TILE * 2 - 24))
+        bg.inflate_ip(8, 6)
+        pygame.draw.rect(self.screen, (255, 245, 210), bg, border_radius=6)
+        pygame.draw.rect(self.screen, (90, 70, 50), bg, 2, border_radius=6)
+        self.screen.blit(label, (bg.x + 4, bg.y + 3))
+
     def draw_creatures(self, creatures):
         for c in creatures:
             x, y = self.cam.apply(c.x, c.y + c.bob)
@@ -287,6 +313,10 @@ class Renderer:
             f"Harmony: {game.shield.harmony:.0f}    GA generation: {game.ga.generation}",
             True, (80, 65, 50))
         s.blit(line2, (panel.x + 24, y)); y += 30
+        hint = self._compass_hints(game)
+        if hint:
+            line2b = self.font.render(hint, True, (60, 90, 60))
+            s.blit(line2b, (panel.x + 24, y)); y += 30
         line3 = self.font.render(
             "Castle: place quartz, crystal, starlight, oak, or castle blocks near the "
             "heart of the realm to raise Harmony.", True, (80, 65, 50))
@@ -311,9 +341,41 @@ class Renderer:
                         s.blit(ct, (rect.right - ct.get_width() - 2,
                                     rect.bottom - 16))
         hint = self.small.render(
-            "E or Esc to close   |   F5 quick-saves   |   Feed Sunberries to creatures "
-            "with right-click!", True, (110, 90, 70))
+            "E or Esc to close  |  Click backpack item: to hotbar  |  "
+            "Right-click a hotbar row below: to backpack  |  F5 saves",
+            True, (110, 90, 70))
         s.blit(hint, (panel.centerx - hint.get_width() // 2, panel.bottom - 34))
+
+    def _compass_hints(self, game):
+        px = game.player.x
+        parts = []
+        best_c = None
+        best_d = float("inf")
+        for c in game.creatures.creatures:
+            if not c.befriended:
+                d = abs(c.x - px)
+                if d < best_d:
+                    best_c, best_d = c, d
+        if best_c is not None:
+            dist = int(best_d // config.TILE)
+            side = "right" if best_c.x >= px else "left"
+            parts.append(
+                f"A lonely {best_c.species} waits {dist} steps to your {side}"
+            )
+        best_p = None
+        best_d = float("inf")
+        for p in game.pylons.pylons:
+            if not p.restored:
+                d = abs(p.x - px)
+                if d < best_d:
+                    best_p, best_d = p, d
+        if best_p is not None:
+            dist = int(best_d // config.TILE)
+            side = "right" if best_p.x >= px else "left"
+            parts.append(f"a sleeping pylon glows {dist} steps to your {side}")
+        if not parts:
+            return ""
+        return "Where to go: " + "  |  ".join(parts)
 
     def draw_victory(self):
         s = self.screen

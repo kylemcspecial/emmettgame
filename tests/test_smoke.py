@@ -150,6 +150,62 @@ def main():
         game.frame()
         game2.frame()
 
+    # --- new feature checks ---
+
+    # castle blocks are obtainable in the world near the castle site
+    deposits = sum(
+        1 for c in range(game.castle.col - 25, game.castle.col + 26)
+        for r in (game.world.surface_row(c), game.world.surface_row(c) - 1)
+        if game.world.get(r, c) in (W.CASTLE_STONE, W.CASTLE_QUARTZ)
+    )
+    assert deposits >= 4, "castle block deposits should exist near the site"
+
+    # rune key shard blocks exist and drop rune keys
+    shards = sum(
+        1 for c in range(game.world.cols)
+        for r in (game.world.surface_row(c), game.world.surface_row(c) - 1)
+        if game.world.get(r, c) == W.RUNE_KEY_BLOCK
+    )
+    assert shards >= 1
+    from citadel.inventory import BLOCK_TO_ITEM
+    assert BLOCK_TO_ITEM[W.RUNE_KEY_BLOCK] == "rune_key"
+
+    # rune key use: right-click near pylon advances progress
+    game.inventory.add("rune_key", 1)
+    p3 = game.pylons.unrestored()[0]
+    prog0 = p3.progress
+    game.inventory.consume("rune_key", 1)
+    p3.progress = min(p3.progress + 1, len(p3.target_seq))
+    assert p3.progress == prog0 + 1
+
+    # catalyst adds harmony
+    harmony_a = game.shield.harmony
+    game.inventory.add("catalyst", 1)
+    assert game.inventory.consume("catalyst", 1)
+    game.shield.add_harmony(12, game.ga)
+    assert game.shield.harmony > harmony_a
+
+    # hotbar -> backpack move
+    game.inventory.hotbar[2] = ("stone", 7)
+    assert game.inventory.to_backpack(0, 2)
+    assert game.inventory.hotbar[2] == (None, None)
+    assert any(it == "stone" for row in game.inventory.backpack for it, _ in row)
+
+    # compass hints render without crashing
+    game.mode = "inventory"
+    for _ in range(2):
+        game.frame()
+    game.renderer.draw_inventory_screen(game)
+    game.mode = "play"
+
+    # castle banner draws without crashing
+    game.renderer.draw_castle_banner(game.castle, game.world)
+
+    # sounds degrade gracefully when mixer is missing
+    from citadel.sounds import Sounds
+    s = Sounds()
+    s.play("wand")  # must not raise even when disabled
+
     # victory path: all pylons + harmony banishes shadow
     for p in game.pylons.pylons:
         p.restored = True

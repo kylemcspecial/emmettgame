@@ -20,6 +20,7 @@ THORNS = 8
 BERRY_BUSH = 9
 CASTLE_STONE = 10
 CASTLE_QUARTZ = 11
+RUNE_KEY_BLOCK = 12
 
 BLOCKS = {
     AIR: ("Air", None),
@@ -34,9 +35,11 @@ BLOCKS = {
     BERRY_BUSH: ("Berry Bush", (60, 140, 70)),
     CASTLE_STONE: ("Castle Stone", (185, 190, 205)),
     CASTLE_QUARTZ: ("Castle Quartz", (250, 245, 255)),
+    RUNE_KEY_BLOCK: ("Rune Key Shard", (200, 140, 255)),
 }
 
-BREAKABLE = {GRASS, DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, THORNS, BERRY_BUSH}
+BREAKABLE = {GRASS, DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, THORNS,
+             BERRY_BUSH, CASTLE_STONE, CASTLE_QUARTZ, RUNE_KEY_BLOCK}
 DROPS = {
     GRASS: DIRT,
     DIRT: DIRT,
@@ -47,21 +50,25 @@ DROPS = {
     STARLIGHT: STARLIGHT,
     THORNS: None,
     BERRY_BUSH: None,
+    CASTLE_STONE: CASTLE_STONE,
+    CASTLE_QUARTZ: CASTLE_QUARTZ,
+    RUNE_KEY_BLOCK: None,
 }
 PLACEABLE = {DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, CASTLE_STONE, CASTLE_QUARTZ}
 SOLID = {b for b in BLOCKS if b != AIR}
 
 
 class World:
-    def __init__(self, rng, cols=None, rows=None):
+    def __init__(self, rng, cols=None, rows=None, castle_col=None):
         self.rng = rng
         self.cols = cols or config.WORLD_COLS
         self.rows = rows or config.WORLD_ROWS
         self.grid = np.zeros((self.rows, self.cols), dtype=np.int16)
         self.regrow = []  # (time_left, row, col, block)
-        self.generate()
+        self.generate(castle_col=castle_col)
 
-    def generate(self):
+    def generate(self, castle_col=None):
+        self.castle_col = castle_col
         ground = self.rows - 12
         heights = ground + np.clip(
             np.sin(np.arange(self.cols) * 0.18) * 2
@@ -79,7 +86,34 @@ class World:
         self._scatter(STARLIGHT, 10)
         self._scatter(THORNS, 14)
         self._scatter(BERRY_BUSH, 12)
+        self._castle_deposits()
+        self._rune_key_shards()
         self._caves()
+
+    def _castle_deposits(self):
+        center = self.castle_col or self.cols // 2
+        placed = 0
+        attempts = 0
+        while placed < 8 and attempts < 400:
+            attempts += 1
+            c = int(self.rng.integers(center - 25, center + 26))
+            c = max(2, min(self.cols - 3, c))
+            r = self.surface_row(c) - 1
+            if r >= 0 and self.grid[r, c] == AIR:
+                block = CASTLE_STONE if placed % 2 == 0 else CASTLE_QUARTZ
+                self.grid[r, c] = block
+                placed += 1
+
+    def _rune_key_shards(self):
+        placed = 0
+        attempts = 0
+        while placed < 3 and attempts < 400:
+            attempts += 1
+            c = int(self.rng.integers(4, self.cols - 4))
+            r = self.surface_row(c) - 1
+            if r >= 0 and self.grid[r, c] == AIR:
+                self.grid[r, c] = RUNE_KEY_BLOCK
+                placed += 1
 
     def _scatter(self, block, n):
         placed = 0

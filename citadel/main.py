@@ -674,6 +674,7 @@ class Game:
         r.draw_player(self.player)
         r.draw_weather(self.weather_t, self.day_t)
         self.particles.draw(self.screen, r.cam)
+        r.draw_time_overlay(self.day_t)
         if self.mode == "play":
             pos = pygame.mouse.get_pos()
             row, col = self._aim_tile(pos)

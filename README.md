@@ -32,7 +32,12 @@ python3 run_game.py --headless  # no display (smoke test)
 - `F5` — quick-save (auto-loads next time; also auto-saves on quit)
 - `F6` — performance mode (fancy effects off/on)
 - `F7` — FPS display
+- `F11` — fullscreen
+- `F12` — save a photo of your castle!
+- `+` / `-` — volume up / down
 - `Esc` — close panels / quit
+
+Settings (volume, performance mode, fullscreen) are remembered between sessions.
 
 **Gamepad:** left stick moves, A jumps, B casts the wand, X places, shoulder buttons cycle the hotbar, Start opens the ledger.
 

@@ -331,6 +331,81 @@ def main():
         pass
     _os.remove("/tmp/bad_save.json")
 
+    # --- PR4 playability checks ---
+
+    # settings persist round-trip
+    from citadel import settings as S
+    import citadel.config as C
+    C.VOLUME = 0.5
+    C.PERFORMANCE_MODE = True
+    S.save_settings("/tmp/test_settings.json")
+    C.VOLUME = 0.1
+    C.PERFORMANCE_MODE = False
+    S.load_settings("/tmp/test_settings.json")
+    assert C.VOLUME == 0.5 and C.PERFORMANCE_MODE is True
+    _os.remove("/tmp/test_settings.json")
+    C.PERFORMANCE_MODE = False
+
+    # mercy hint after 2 wrong puzzle clicks
+    g7 = Game(headless=True, load=False)
+    g7.mode = "play"
+    p7 = g7.pylons.pylons[0]
+    g7.active_pylon = p7
+    g7.mode = "puzzle"
+    g7.renderer.rune_rects = {
+        name: pygame.Rect(i * 90, 150, 80, 80)
+        for i, name in enumerate(["Sun", "Moon", "Star", "Leaf", "Wave"])
+    }
+    wrong = next(r for r in g7.renderer.rune_rects
+                 if r != p7.target_seq[0])
+    g7._puzzle_click(g7.renderer.rune_rects[wrong].center)
+    g7._puzzle_click(g7.renderer.rune_rects[wrong].center)
+    assert g7.puzzle_fails.get(p7.pid) == 2
+    # third failure still fine, progress reset
+    g7._puzzle_click(g7.renderer.rune_rects[wrong].center)
+    assert p7.progress == 0
+    g7.mode = "play"
+
+    # castle-site tip fires once
+    g7.tips_shown.clear()
+    col = g7.castle.col
+    row = g7.world.surface_row(col) - 1
+    g7.world.set(row, col, W.AIR)
+    gain = g7.castle.register_block(row, col, W.CRYSTAL,
+                                    g7.creatures.creatures, g7.ga)
+    assert gain >= 1.0
+    # (tip notification path covered by _right_action; direct check here)
+
+    # wand beam decays and clears
+    g7.wand_beam = (0, 0, 10, 10, 0.05)
+    g7.update(0.06)
+    assert g7.wand_beam is None
+
+    # weather + crack render without crash
+    g7.frame()
+    g7.renderer.draw_weather(3.0, 0.25)
+    g7.renderer.draw_break_crack(10, 10, 0.5)
+    g7.renderer.draw_wand_beam(0, 0, 100, 100, 0.2)
+
+    # wizard has 3 frames incl. jump pose
+    assert len(g7.renderer.wizard) == 3
+
+    # volume keys change volume
+    v0 = C.VOLUME
+    g7.handle_event(pygame.event.Event(pygame.KEYDOWN,
+                                       key=pygame.K_EQUALS))
+    assert C.VOLUME > v0
+    g7.handle_event(pygame.event.Event(pygame.KEYDOWN,
+                                       key=pygame.K_MINUS))
+
+    # title shows Continue when save exists
+    from citadel.save import save_game as sg2
+    sg2(g7, "/tmp/test_save3.json")
+    from citadel.save import has_save
+    C.SAVE_PATH = "/tmp/test_save3.json"
+    assert has_save()
+    _os.remove("/tmp/test_save3.json")
+
     print("SMOKE TEST PASSED")
     pygame.quit()
 

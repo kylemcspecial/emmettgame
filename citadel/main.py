@@ -16,6 +16,7 @@ from .player import Player
 from .pylons import FriendshipShield, PylonManager, Shadow
 from .renderer import Renderer
 from .save import load_game, save_game
+from .settings import load_settings, save_settings
 from .sounds import Sounds
 from . import world as W
 
@@ -27,7 +28,13 @@ class Game:
         )
         pygame.init()
         self.headless = headless
-        self.screen = pygame.display.set_mode((config.SCREEN_W, config.SCREEN_H))
+        load_settings()
+        if not headless and config.FULLSCREEN:
+            self.screen = pygame.display.set_mode(
+                (config.SCREEN_W, config.SCREEN_H), pygame.FULLSCREEN)
+        else:
+            self.screen = pygame.display.set_mode(
+                (config.SCREEN_W, config.SCREEN_H))
         pygame.display.set_caption(config.TITLE)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 30)
@@ -54,6 +61,10 @@ class Game:
         self._title_button_rect = None
         self.naming = None            # creature being named
         self.naming_text = ""
+        self.tips_shown = set()        # one-time contextual tips
+        self.puzzle_fails = {}         # pylon id -> consecutive wrong clicks
+        self.wand_beam = None          # (x0,y0,x1,y1,t)
+        self.weather_t = 0.0
         self.running = True
         if load and not headless:
             from .save import has_save
@@ -77,6 +88,7 @@ class Game:
         try:
             if not self.headless:
                 save_game(self)
+                save_settings()
         except Exception:
             pass
         self.running = False
@@ -103,6 +115,25 @@ class Game:
         self.message_t = t
 
     # ---------------- input ----------------
+
+    def _start_play(self):
+        self.mode = "play"
+        self.sounds.start_music()
+        from .save import has_save
+        if "intro" not in self.tips_shown:
+            self.tips_shown.add("intro")
+            self.notify(
+                "Welcome, wizard! A/D to walk, W to jump. Cast your wand "
+                "(left click) at creatures to make friends!", 7,
+            )
+            if not self.shadow.banished:
+                self.tips_shown.add("shadow_intro")
+                self.notify(
+                    "Something dark watches from afar... only warmth and "
+                    "friendship will push it away.", 8,
+                )
+        else:
+            self.notify("Welcome back to your realm!", 4)
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -143,11 +174,7 @@ class Game:
             if self.mode == "title":
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE,
                                  pygame.K_KP_ENTER):
-                    self.mode = "play"
-                    self.notify(
-                        "Welcome, wizard! A/D to walk, W to jump. Cast your "
-                        "wand (left click) at creatures to make friends!", 6,
-                    )
+                    self._start_play()
                 elif event.key == pygame.K_ESCAPE:
                     self.shutdown()
                 return
@@ -182,6 +209,25 @@ class Game:
                     "Performance mode OFF - fancy effects back on!")
             elif event.key == pygame.K_F7:
                 config.SHOW_FPS = not config.SHOW_FPS
+            elif event.key == pygame.K_F11:
+                config.FULLSCREEN = not config.FULLSCREEN
+                if not self.headless:
+                    flags = pygame.FULLSCREEN if config.FULLSCREEN else 0
+                    self.screen = pygame.display.set_mode(
+                        (config.SCREEN_W, config.SCREEN_H), flags)
+            elif event.key == pygame.K_EQUALS or event.key == pygame.K_KP_PLUS:
+                self.sounds.set_volume(config.VOLUME + 0.1)
+                self.notify(f"Volume {int(config.VOLUME * 100)}%")
+            elif event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:
+                self.sounds.set_volume(config.VOLUME - 0.1)
+                self.notify(f"Volume {int(config.VOLUME * 100)}%")
+            elif event.key == pygame.K_F12:
+                path = f"citadel-photo-{int(pygame.time.get_ticks() / 1000)}.png"
+                try:
+                    pygame.image.save(self.screen, path)
+                    self.notify(f"Photo saved: {path}!")
+                except Exception:
+                    self.notify("Could not save the photo, sorry!")
         elif event.type == pygame.MOUSEWHEEL:
             if self.mode == "play":
                 self.inventory.cycle(1 if event.y > 0 else -1)
@@ -189,11 +235,7 @@ class Game:
             if self.mode == "title" and event.button == 1:
                 if self._title_button_rect and \
                         self._title_button_rect.collidepoint(event.pos):
-                    self.mode = "play"
-                    self.notify(
-                        "Welcome, wizard! A/D to walk, W to jump. Cast your "
-                        "wand (left click) at creatures to make friends!", 6,
-                    )
+                    self._start_play()
                 return
             if self.mode == "hints" and event.button == 1:
                 self.mode = "play"
@@ -272,6 +314,13 @@ class Game:
                 else:
                     self.notify("The runes dim. Feel the energy and try again.")
                     self.sounds.play("puzzle_bad")
+                    pid = self.active_pylon.pid
+                    self.puzzle_fails[pid] = self.puzzle_fails.get(pid, 0) + 1
+                    if self.puzzle_fails[pid] == 2:
+                        first = self.active_pylon.target_seq[0]
+                        self.notify(
+                            f"The runes whisper... try {first} first...", 5,
+                        )
                 return
 
     def _backpack_click(self, pos, button=1):
@@ -341,6 +390,8 @@ class Game:
             return
         self.player.wand_timer = config.WAND_COOLDOWN
         self.particles.emit(creature.x, creature.y, creature.color, 16)
+        self.wand_beam = (self.player.x, self.player.y - 8,
+                          creature.x, creature.y, 0.25)
         self.sounds.play("wand")
         done = creature.advance_charm()
         if done:
@@ -419,6 +470,12 @@ class Game:
             )
             if gain:
                 self.shield.add_harmony(gain, self.ga)
+                if "castle_site" not in self.tips_shown:
+                    self.tips_shown.add("castle_site")
+                    self.notify(
+                        "This is your citadel! Every block you place here "
+                        "adds warmth - and warmth keeps the Shadow away.", 6,
+                    )
             self.particles.emit(
                 (col + 0.5) * config.TILE, (row + 0.5) * config.TILE,
                 (220, 220, 210), 6, speed=30,
@@ -437,6 +494,11 @@ class Game:
 
     def update(self, dt):
         self.day_t = (self.day_t + dt / config.DAY_LENGTH) % 1.0
+        if self.wand_beam is not None:
+            x0, y0, x1, y1, t = self.wand_beam
+            t -= dt
+            self.wand_beam = (x0, y0, x1, y1, t) if t > 0 else None
+        self.weather_t += dt
         if self.message_t > 0:
             self.message_t -= dt
             if self.message_t <= 0:
@@ -493,6 +555,8 @@ class Game:
 
     def _finish_break(self, row, col):
         self.breaking = None
+        block = self.world.get(row, col)
+        block_col = W.BLOCKS.get(block, ("", (200, 200, 190)))[1]
         drop, n = self.world.break_block(row, col)
         if drop:
             if drop in BLOCK_TO_ITEM:
@@ -502,7 +566,7 @@ class Game:
             )
             self.particles.emit(
                 (col + 0.5) * config.TILE, (row + 0.5) * config.TILE,
-                (200, 200, 190), 10, speed=50,
+                block_col, 10, speed=50,
             )
             if drop == "berry":
                 self.world.schedule_regrowth(row, col, W.BERRY_BUSH)
@@ -558,13 +622,17 @@ class Game:
         r.draw_creatures(self.creatures.creatures)
         r.draw_shadow(self.shadow)
         r.draw_player(self.player)
+        r.draw_weather(self.weather_t, self.day_t)
         self.particles.draw(self.screen, r.cam)
         if self.mode == "play":
             pos = pygame.mouse.get_pos()
             row, col = self._aim_tile(pos)
             r.highlight_tile(row, col, self._in_reach(row, col))
             if self.breaking:
-                r.highlight_tile(self.breaking[0], self.breaking[1], True)
+                r.draw_break_crack(self.breaking[0], self.breaking[1],
+                                    self.breaking[2] / config.BREAK_TIME)
+        if self.wand_beam is not None:
+            r.draw_wand_beam(*self.wand_beam)
         if self.mode in ("play", "puzzle", "inventory"):
             r.draw_hud(self)
             r.draw_quests(self)

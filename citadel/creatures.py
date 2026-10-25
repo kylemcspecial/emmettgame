@@ -67,12 +67,26 @@ class Creature:
         step = self.dir * config.MOVE_SPEED * 0.35 * dt
         nx = self.x + step
         col = int(nx / config.TILE)
-        row = world.surface_row(col)
-        if world.in_bounds(row, col) and not world.is_solid(row - 1, col):
+        cur_row = world.surface_row(int(self.x / config.TILE))
+        tgt_row = world.surface_row(col)
+        clear = (world.in_bounds(tgt_row, col)
+                 and not world.is_solid(tgt_row - 1, col))
+        if clear:
             self.x = nx
             self.col = col
+        elif (world.in_bounds(tgt_row, col)
+              and tgt_row == cur_row - 1
+              and not world.is_solid(tgt_row - 1, col)
+              and not world.is_solid(tgt_row - 2, col)):
+            # one-block rise: hop up it instead of turning back
+            self.x = nx
+            self.col = col
+            self.hop_t = 0.25
         else:
             self.dir = -self.dir
+        if self.hop_t > 0:
+            self.hop_t -= dt
+            self.bob = -6 * (self.hop_t / 0.25)
         self.row = world.surface_row(int(self.x / config.TILE))
         self.y = (self.row - 0.5) * config.TILE
 

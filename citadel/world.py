@@ -174,6 +174,7 @@ class World:
         return self.get(row, col) in SOLID
 
     def surface_row(self, col):
+        col = max(0, min(self.cols - 1, int(col)))
         for r in range(self.rows):
             if self.grid[r, col] != AIR:
                 return r

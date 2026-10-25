@@ -526,3 +526,26 @@ def check_py39_fstrings():
 
 
 check_py39_fstrings()
+
+
+def check_edge_regression():
+    """Creatures walking home to a world edge must never index out of
+    bounds (this crashed the game on the Pi), and surface_row must
+    bounds-check its column."""
+    import pygame
+    g = Game(headless=True, load=False)
+    g.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    c = g.creatures.creatures[1]
+    c.befriended = True
+    c.home_x = (g.world.cols - 1) * config.TILE
+    c.x = 100 * config.TILE
+    for _ in range(600):
+        c.update(g.world, 1 / 60, g.player.x)
+        assert 0 <= c.x <= (g.world.cols - 1) * config.TILE, \
+            f"creature escaped bounds: {c.x}"
+    assert g.world.surface_row(g.world.cols) == g.world.surface_row(g.world.cols - 1)
+    assert g.world.surface_row(-5) == g.world.surface_row(0)
+    print("edge regression OK")
+
+
+check_edge_regression()

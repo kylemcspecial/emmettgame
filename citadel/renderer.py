@@ -216,11 +216,16 @@ class Renderer:
         if glow_points:
             self.draw_glow(glow_points)
 
+    _crack_surf = None
+
     def draw_break_crack(self, row, col, progress):
         """progress 0..1 -> crack overlay grows."""
         x, y = self.cam.apply(col * config.TILE, row * config.TILE)
         rect = pygame.Rect(x, y, config.TILE, config.TILE)
-        shade = pygame.Surface((config.TILE, config.TILE), pygame.SRCALPHA)
+        if self._crack_surf is None:
+            self._crack_surf = pygame.Surface(
+                (config.TILE, config.TILE), pygame.SRCALPHA)
+        shade = self._crack_surf
         shade.fill((0, 0, 0, int(60 * progress)))
         self.screen.blit(shade, rect.topleft)
         n = int(progress * 4) + 1
@@ -232,18 +237,24 @@ class Renderer:
                              (x0, y0), (x0 + 6, y0 + 5), 1)
         self.screen.blit(shade, rect.topleft)
 
+    _beam_surf = None
+
     def draw_wand_beam(self, x0, y0, x1, y1, t):
         """glowing beam for ~t seconds after cast; fade out."""
         if t <= 0:
             return
+        if self._beam_surf is None:
+            self._beam_surf = pygame.Surface(
+                (config.SCREEN_W, config.SCREEN_H), pygame.SRCALPHA)
         alpha = max(0, min(255, int(255 * t / 0.25)))
         sx, sy = self.cam.apply(x0, y0)
         ex, ey = self.cam.apply(x1, y1)
-        beam = pygame.Surface((config.SCREEN_W, config.SCREEN_H),
-                              pygame.SRCALPHA)
-        pygame.draw.line(beam, (150, 220, 255, alpha), (sx, sy), (ex, ey), 4)
-        pygame.draw.line(beam, (255, 255, 255, alpha), (sx, sy), (ex, ey), 2)
-        self.screen.blit(beam, (0, 0))
+        self._beam_surf.fill((0, 0, 0, 0))
+        pygame.draw.line(self._beam_surf, (150, 220, 255, alpha),
+                         (sx, sy), (ex, ey), 4)
+        pygame.draw.line(self._beam_surf, (255, 255, 255, alpha),
+                         (sx, sy), (ex, ey), 2)
+        self.screen.blit(self._beam_surf, (0, 0))
 
     def highlight_tile(self, row, col, ok=True):
         x, y = self.cam.apply(col * config.TILE, row * config.TILE)
@@ -263,11 +274,22 @@ class Renderer:
             frame = pygame.transform.flip(frame, True, False)
         self.screen.blit(frame, frame.get_rect(center=(x, y)))
 
+    _weather_surf_day = None
+    _weather_surf_night = None
+
     def draw_weather(self, t, day_t):
         """Drifting pollen by day, fireflies at night."""
         if config.PERFORMANCE_MODE:
             return
         night = np.sin((day_t - 0.25) * 2 * np.pi) > 0
+        if night:
+            if self._weather_surf_night is None:
+                self._weather_surf_night = pygame.Surface((8, 8), pygame.SRCALPHA)
+            surf = self._weather_surf_night
+        else:
+            if self._weather_surf_day is None:
+                self._weather_surf_day = pygame.Surface((6, 6), pygame.SRCALPHA)
+            surf = self._weather_surf_day
         rng = np.random.default_rng(1234)
         s = self.screen
         for i in range(18):
@@ -278,17 +300,13 @@ class Renderer:
                  + np.sin(t * 0.7 + i) * 12)
             if night:
                 tw = 0.5 + 0.5 * np.sin(t * 3 + i * 1.7)
-                c = (255, 240, 150)
-                r = 2
-                glow = pygame.Surface((8, 8), pygame.SRCALPHA)
+                surf.fill((0, 0, 0, 0))
                 a = int(120 * tw)
-                pygame.draw.circle(glow, (*c, a), (4, 4), 3)
-                s.blit(glow, (int(x) - 4, int(y) - 4))
+                pygame.draw.circle(surf, (255, 240, 150, a), (4, 4), 3)
+                s.blit(surf, (int(x) - 4, int(y) - 4))
             else:
-                c = (255, 255, 210)
-                r = 2
-                surf = pygame.Surface((6, 6), pygame.SRCALPHA)
-                pygame.draw.circle(surf, (*c, 90), (3, 3), 2)
+                surf.fill((0, 0, 0, 0))
+                pygame.draw.circle(surf, (255, 255, 210, 90), (3, 3), 2)
                 s.blit(surf, (int(x) - 3, int(y) - 3))
 
     def draw_fountain(self, fountain, world):
@@ -386,11 +404,17 @@ class Renderer:
                     (x, y), int(p.shield_radius), 2,
                 )
 
+    _shadow_surf = None
+
     def draw_shadow(self, shadow):
         if not shadow.active or shadow.banished:
             return
         x, _ = self.cam.apply(shadow.x, 0)
-        surf = pygame.Surface((70, config.SCREEN_H), pygame.SRCALPHA)
+        if self._shadow_surf is None:
+            self._shadow_surf = pygame.Surface(
+                (70, config.SCREEN_H), pygame.SRCALPHA)
+        surf = self._shadow_surf
+        surf.fill((0, 0, 0, 0))
         w = 30 + 8 * np.sin(shadow.wobble * 2)
         pygame.draw.ellipse(surf, (20, 12, 30, 170), (35 - w / 2, 0, w, config.SCREEN_H))
         self.screen.blit(surf, (x - 35, 0))

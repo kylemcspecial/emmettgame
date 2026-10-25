@@ -44,6 +44,8 @@ Settings (volume, performance mode, fullscreen) are remembered between sessions.
 ## Gameplay
 
 - Explore: mine ancient oak, crystal, starlight, castle stone, and more; berry bushes regrow (farming!). Glowing shards hold Rune Keys, and Catalyst Blooms hold Shield Catalysts.
+- **Blessing Fountain**: right-click the fountain at your castle site while holding stone, wood, quartz, crystal, or starlight - it blesses them into Castle Stone or Castle Quartz!
+- **13 badges to earn**: First Friend, Lightbringer, Castle Builder, Green Thumb, and more - watch for star toasts, and see them all in the Friendship Ledger (`E`).
 - Befriend every creature you meet — charm them with your wand or feed them Sunberries. **Every creature looks different** — six species, each with its own size, pattern, and little accessories. Name your friends with `N`!
 - Pylons awaken one at a time — solve a rune puzzle to restore one, and the next ancient pylon stirs somewhere in the realm.
 - Build your dream citadel at the banner in the heart of the realm — the right blocks near the right creatures give extra Harmony.

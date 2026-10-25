@@ -430,6 +430,67 @@ def main():
     g8.renderer.screen = g8.screen
     assert g8.renderer.screen is g8.screen
 
+    # --- PR5 endgame checks ---
+
+    # blessing fountain: recipes convert surplus into castle blocks
+    from citadel.fountain import Fountain, RECIPES
+    f = Fountain(game.castle)
+    before = game.inventory.count("stone")
+    game.inventory.add("stone", 10)
+    out = f.bless("stone", game.inventory)
+    assert out == "castle_stone"
+    assert game.inventory.count("stone") == before + 6
+    out2 = f.bless("starlight", game.inventory)
+    assert out2 is None  # not enough starlight
+    game.inventory.add("starlight", 2)
+    assert f.bless("starlight", game.inventory) == "castle_quartz"
+    assert game.inventory.count("starlight") == 0
+
+    # achievements unlock from state and persist
+    g9 = Game(headless=True, load=False)
+    g9.mode = "play"
+    c9 = g9.creatures.creatures[0]
+    while not c9.befriended:
+        g9.player.wand_timer = 0
+        g9._cast_wand(c9)
+    g9.achievements.update(0.0)
+    assert "first_friend" in g9.achievements.unlocked
+    for _ in range(10):
+        g9.achievements.event_berry_harvest()
+    assert "green_thumb" in g9.achievements.unlocked
+    path5 = save_game(g9, "/tmp/test_save5.json")
+    g10 = Game(headless=True, load=False)
+    load_game(g10, "/tmp/test_save5.json")
+    assert "first_friend" in g10.achievements.unlocked
+    assert g10.achievements.berries == 10
+    _os.remove(path5)
+
+    # fountain + achievements render without crash
+    g10.mode = "play"
+    g10.frame()
+    g10.mode = "inventory"
+    g10.frame()
+    g10.mode = "play"
+    g10.achievements.toasts.append(["T", "s", 1.0])
+    g10.frame()
+
+    # --- PR5 review regression checks ---
+
+    # fountain range is a real 2D radius around the spout
+    g11 = Game(headless=True, load=False)
+    g11.mode = "play"
+    fx, fy = g11.fountain.world_pos(g11.world)
+    assert g11.fountain.in_range(fx, fy, world=g11.world)
+    assert not g11.fountain.in_range(fx, fy - config.TILE * 5, world=g11.world)
+    assert not g11.fountain.in_range(fx + config.TILE * 4, fy, world=g11.world)
+
+    # fountain column is protected from digging
+    col_f = g11.fountain.col
+    surf_f = g11.world.surface_row(col_f)
+    before_f = g11.world.get(surf_f - 1, col_f)
+    g11._finish_break(surf_f - 1, col_f)
+    assert g11.world.get(surf_f - 1, col_f) == before_f
+
     print("SMOKE TEST PASSED")
     pygame.quit()
 

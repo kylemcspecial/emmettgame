@@ -6,8 +6,10 @@ import numpy as np
 import pygame
 
 from . import config
+from .achievements import Achievements
 from .castle import Castle
 from .creatures import CreatureManager
+from .fountain import Fountain
 from .genetics import GeneticTuner
 from .graphics import Particles, Textures
 from .inventory import BLOCK_TO_ITEM, DropManager, ITEMS
@@ -46,6 +48,7 @@ class Game:
         self.renderer = Renderer(
             self.screen, self.font, self.big, self.small, Textures()
         )
+        self.achievements = Achievements(self)
         self.world.on_change = self.renderer.mark_dirty
         self.particles = Particles()
         self.gamepad = Gamepad()
@@ -95,6 +98,7 @@ class Game:
 
     def _fresh_state(self):
         self.castle = Castle(col=config.WORLD_COLS // 2)
+        self.fountain = Fountain(self.castle)
         self.world = W.World(self.rng, castle_col=self.castle.col)
         self.ga = GeneticTuner(self.rng)
         self.player = Player(self.world, col=8)
@@ -119,6 +123,7 @@ class Game:
     def _start_play(self):
         self.mode = "play"
         self.sounds.start_music()
+        self.sounds.start_ambient(night=False)
         if "intro" not in self.tips_shown:
             self.tips_shown.add("intro")
             self.notify(
@@ -145,6 +150,7 @@ class Game:
                         self.naming.name = self.naming_text.strip()[:14]
                         self.sounds.play("friend")
                         self.notify(f"{self.naming.name} loves their new name!")
+                        self.achievements.event_named()
                     self.naming = None
                     self.naming_text = ""
                 elif event.key == pygame.K_ESCAPE:
@@ -459,9 +465,35 @@ class Game:
                 self.notify("The catalyst bursts into warm light! Harmony +12")
                 self.sounds.play("catalyst")
             return
+        if self.fountain.in_range(pos[0] + self.renderer.cam.x,
+                                  pos[1] + self.renderer.cam.y,
+                                  world=self.world):
+            need = self.fountain.amount_needed(held_item)
+            if held_item and need is not None:
+                out = self.fountain.bless(held_item, self.inventory)
+                if out is not None:
+                    self.inventory.add(out, 1)
+                    self.particles.emit(
+                        self.fountain.x, self.player.y - config.TILE,
+                        (255, 214, 92), 18, speed=70)
+                    self.sounds.play("catalyst")
+                    from .inventory import ITEMS
+                    self.notify(
+                        f"The fountain blesses your {ITEMS[held_item][0]} "
+                        f"into {ITEMS[out][0]}!")
+                else:
+                    from .inventory import ITEMS
+                    self.notify(
+                        f"The fountain needs {need} "
+                        f"{ITEMS[held_item][0]} for a blessing.", 3)
+                return
         if not self._in_reach(row, col):
             return
         block = self.inventory.current_placeable_block()
+        if block is not None and col == self.fountain.col \
+                and row <= self.world.surface_row(col):
+            self.notify("The fountain sparkles - nothing can be placed on it!", 2)
+            return
         if block is not None and self.world.place_block(row, col, block):
             self.inventory.consume_selected()
             self.sounds.play("place")
@@ -499,6 +531,8 @@ class Game:
             t -= dt
             self.wand_beam = (x0, y0, x1, y1, t) if t > 0 else None
         self.weather_t += dt
+        if self.mode in ("play", "puzzle", "inventory"):
+            self.achievements.update(dt)
         if self.message_t > 0:
             self.message_t -= dt
             if self.message_t <= 0:
@@ -555,6 +589,9 @@ class Game:
 
     def _finish_break(self, row, col):
         self.breaking = None
+        if col == self.fountain.col and abs(row - self.world.surface_row(col)) <= 2:
+            self.notify("The fountain is ancient and unbreakable!", 2)
+            return
         block = self.world.get(row, col)
         block_col = W.BLOCKS.get(block, ("", (200, 200, 190)))[1]
         drop, n = self.world.break_block(row, col)
@@ -570,6 +607,7 @@ class Game:
             )
             if drop == "berry":
                 self.world.schedule_regrowth(row, col, W.BERRY_BUSH)
+                self.achievements.event_berry_harvest()
             self.shield.add_harmony(0.2, self.ga)
 
     # ---------------- draw ----------------
@@ -616,6 +654,7 @@ class Game:
                                      (rr + 0.5) * config.TILE, col,
                                      int(config.TILE * 1.5)))
         r.draw_world(self.world, self.day_t, glow)
+        r.draw_fountain(self.fountain, self.world)
         r.draw_castle_banner(self.castle, self.world)
         r.draw_pylons(self.pylons.pylons)
         r.draw_drops(self.drops.drops)
@@ -645,6 +684,7 @@ class Game:
         r.draw_message(self.message if self.message_t > 0 else "")
         if self.naming is not None:
             r.draw_naming(self.naming_text)
+        self.achievements.draw(self.screen, self.font, self.small)
         if self.mode == "puzzle" and self.active_pylon:
             r.draw_puzzle(self.active_pylon)
         elif self.mode == "inventory":

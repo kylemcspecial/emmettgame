@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+.venv/
+savegame.json
+settings.json
+citadel-icon.png
+start-citadel
+*.png.photo

@@ -5,12 +5,14 @@ A family-friendly, non-violent voxel sandbox / puzzle RPG for Raspberry Pi 4/5, 
 ## Super Easy Install (for kids!)
 
 1. Clone this repo (or download and unzip it)
-2. Open the folder and **double-click `install.sh`** (choose *Execute in Terminal*)
-   - If double-click doesn't work: open a Terminal in the folder and run `bash install.sh`
+2. Open a Terminal in the folder and run **`bash install.sh`**
+   - The installer creates its own private Python environment (`.venv`) and installs everything into it — nothing touches the rest of the system
 3. When it finishes, a **Citadel of Friendship & Magic** icon appears on your **Desktop**
 4. **Double-click the icon and play!**
 
 *(The first time only, Raspberry Pi OS may ask you to right-click the icon and pick "Allow Launching".)*
+
+To remove the game: `bash install.sh --uninstall` (your save is kept).
 
 ## Run directly
 

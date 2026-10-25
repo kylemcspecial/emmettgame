@@ -24,20 +24,26 @@ python3 run_game.py --headless  # no display (smoke test)
 
 - `A` / `D` or Left/Right arrows — move; `W` / `Space` — jump
 - **Left click** (hold) — break blocks, or cast the wand at creatures, thorns, and pylons
-- **Right click** — place the selected block, or feed a Sunberry to a creature
+- **Right click** — place the selected block, feed a Sunberry, use a Rune Key or Catalyst
 - `1`–`9` or scroll — hotbar selection (slot 1 is the fixed Magic Wand)
-- `E` — Friendship Ledger (creatures, pylons, backpack)
-- `F5` — quick-save (auto-loads next time)
+- `E` — Friendship Ledger (creatures, compass hints, backpack & hotbar)
+- `H` — How-to-Play book
+- `N` — name a befriended creature (they'll remember it forever!)
+- `F5` — quick-save (auto-loads next time; also auto-saves on quit)
+- `F6` — performance mode (fancy effects off/on)
+- `F7` — FPS display
 - `Esc` — close panels / quit
+
+**Gamepad:** left stick moves, A jumps, B casts the wand, X places, shoulder buttons cycle the hotbar, Start opens the ledger.
 
 ## Gameplay
 
-- Explore: mine ancient oak, crystal, starlight, and stone; berry bushes regrow (farming!).
-- Befriend every creature you meet — charm them with your wand or feed them Sunberries. They'll move next to your castle as guardians.
-- Solve the rune puzzles at the ancient pylons to light up the Friendship Shield.
-- Build your dream citadel at the heart of the realm — the right blocks near the right creatures give extra Harmony.
+- Explore: mine ancient oak, crystal, starlight, castle stone, and more; berry bushes regrow (farming!). Glowing shards hold Rune Keys, and Catalyst Blooms hold Shield Catalysts.
+- Befriend every creature you meet — charm them with your wand or feed them Sunberries. **Every creature looks different** — six species, each with its own size, pattern, and little accessories. Name your friends with `N`!
+- Pylons awaken one at a time — solve a rune puzzle to restore one, and the next ancient pylon stirs somewhere in the realm.
+- Build your dream citadel at the banner in the heart of the realm — the right blocks near the right creatures give extra Harmony.
 - The Unnamed Shadow can't be fought — it's gently pushed away by warmth and friendship. Restore all pylons and raise your Harmony to fill the realm with light and win!
-- A genetic algorithm quietly tunes puzzles and creatures so the game stays fun and never too hard.
+- Days pass, stars come out, and a gentle melody plays. A genetic algorithm quietly tunes puzzles and creatures so the game stays fun and never too hard.
 
 ## Layout
 

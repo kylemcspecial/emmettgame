@@ -83,6 +83,7 @@ def load_game(game, path=None):
     game.world.regrow = [list(r) for r in w.get("regrow", [])]
     if hasattr(game, "renderer") and game.renderer is not None:
         game.renderer._world_surf = None
+        game.renderer.cam._snap_next = True
     p = data["player"]
     game.player.x, game.player.y = p["x"], p["y"]
     game.player.facing = p.get("facing", 1)

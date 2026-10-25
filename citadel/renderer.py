@@ -15,13 +15,18 @@ class Camera:
     def __init__(self):
         self.x = 0.0
         self.y = 0.0
+        self._snap_next = True
+
+    def snap(self, px, py):
+        self.x = px - config.SCREEN_W / 2
+        self.y = py - config.SCREEN_H / 2
 
     def follow(self, px, py, dt):
         tx = px - config.SCREEN_W / 2
         ty = py - config.SCREEN_H / 2
-        if self.x == 0.0 and self.y == 0.0:
-            # first frame after spawn: snap instead of a full-second scroll
+        if self._snap_next:
             self.x, self.y = tx, ty
+            self._snap_next = False
             return
         self.x += (tx - self.x) * min(1.0, 6.0 * dt)
         self.y += (ty - self.y) * min(1.0, 6.0 * dt)

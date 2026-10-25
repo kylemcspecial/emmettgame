@@ -531,6 +531,7 @@ class Game:
         self._fresh_state()
         self.world.on_change = self.renderer.mark_dirty
         self.renderer._world_surf = None
+        self.renderer.cam._snap_next = True
         self.mode = "play"
         self.active_pylon = None
         self.notify("A brand-new realm shimmers into being...", 4)

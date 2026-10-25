@@ -105,6 +105,13 @@ def load_game(game, path=None):
         live.target_seq = saved["target_seq"]
         live.shield_radius = saved["shield_radius"]
         live.awakened = saved.get("awakened", live.pid == 0)
+        # restore the saved position: generation is placement-algorithm
+        # dependent, so regenerated coords can disagree with the saved
+        # world (built/mined terrain, or an older build's placement)
+        live.col = int(saved["col"])
+        live.row = int(saved["row"])
+        live.x = (live.col + 0.5) * config.TILE
+        live.y = (live.row + 0.5) * config.TILE
     cast = data["castle"]
     game.castle.blocks = {(r, c): b for r, c, b in cast["blocks"]}
     game.castle.rating = cast["rating"]

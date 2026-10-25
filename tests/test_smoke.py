@@ -606,3 +606,30 @@ def check_spawn_experience():
 
 
 check_spawn_experience()
+
+
+def check_pylon_position_restore():
+    """Codex review finding: saved pylon positions must be restored on
+    load - regeneration is placement-algorithm dependent and can disagree
+    with saved terrain (built/mined) or an older build's placement."""
+    import json as _json
+    g = Game(headless=True, load=False)
+    save_game(g, "/tmp/ppos.json")
+    data = _json.load(open("/tmp/ppos.json"))
+    old_cols = [39, 42, 46, 134, 135]  # an old-build save's locations
+    for s, c in zip(data["pylons"], old_cols):
+        s["col"] = c
+        s["row"] = g.world.surface_row(c) - 1
+    _json.dump(data, open("/tmp/ppos_old.json", "w"))
+    g2 = Game(headless=True, load=False)
+    load_game(g2, "/tmp/ppos_old.json")
+    loaded = [p.col for p in g2.pylons.pylons]
+    assert loaded == old_cols, f"pylon positions not restored: {loaded}"
+    for p in g2.pylons.pylons:
+        assert p.x == (p.col + 0.5) * config.TILE
+    _os.remove("/tmp/ppos.json")
+    _os.remove("/tmp/ppos_old.json")
+    print("pylon position restore OK")
+
+
+check_pylon_position_restore()

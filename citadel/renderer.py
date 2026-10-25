@@ -91,6 +91,32 @@ class Renderer:
         else:
             self.screen.blit(self.wizard, rect)
 
+    def draw_castle_banner(self, castle, world):
+        col = castle.col
+        row = world.surface_row(col)
+        x, y = self.cam.apply((col + 0.5) * config.TILE,
+                              (row - 2) * config.TILE)
+        pole = pygame.Rect(x - 3, y - config.TILE * 2, 6, config.TILE * 2)
+        pygame.draw.rect(self.screen, (120, 90, 60), pole)
+        wave = 3 * np.sin(pygame.time.get_ticks() * 0.004)
+        flag = pygame.Rect(x + 3, y - config.TILE * 2, 44, 26)
+        pygame.draw.polygon(self.screen, (255, 120, 110), [
+            (flag.x, flag.y + wave),
+            (flag.right, flag.y + 6 + wave),
+            (flag.right, flag.y + flag.h + wave),
+            (flag.x, flag.y + flag.h + wave),
+        ])
+        pygame.draw.circle(self.screen, (255, 214, 92),
+                           (flag.x + 12, flag.y + 13 + wave), 5)
+        label = self.small.render("Build your citadel here!", True, (90, 60, 40))
+        bg = label.get_rect(
+            topleft=(x - label.get_width() // 2 + 20,
+                     y - config.TILE * 2 - 24))
+        bg.inflate_ip(8, 6)
+        pygame.draw.rect(self.screen, (255, 245, 210), bg, border_radius=6)
+        pygame.draw.rect(self.screen, (90, 70, 50), bg, 2, border_radius=6)
+        self.screen.blit(label, (bg.x + 4, bg.y + 3))
+
     def draw_creatures(self, creatures):
         for c in creatures:
             x, y = self.cam.apply(c.x, c.y + c.bob)
@@ -187,6 +213,44 @@ class Renderer:
             num = self.small.render(str(i + 1), True, (120, 105, 90))
             s.blit(num, (rect.x + 3, rect.y + 2))
 
+    def draw_quests(self, game):
+        s = self.screen
+        friends = sum(1 for c in game.creatures.creatures if c.befriended)
+        total_friends = len(game.creatures.creatures)
+        restored = len(game.pylons.pylons) - len(game.pylons.unrestored())
+        total_pylons = len(game.pylons.pylons)
+        harmony = game.shield.harmony
+        quests = [
+            (f"Befriend creatures ({friends}/{total_friends})", friends >= total_friends),
+            (f"Restore pylons ({restored}/{total_pylons})", restored >= total_pylons),
+            ("Fill Harmony to 100", harmony >= 100),
+        ]
+        done = all(ok for _, ok in quests)
+        x, y = config.SCREEN_W - 300, 14
+        panel = pygame.Rect(x, y, 286, 30 + 26 * len(quests))
+        pygame.draw.rect(s, (245, 240, 225), panel, border_radius=8)
+        pygame.draw.rect(s, (90, 70, 50), panel, 2, border_radius=8)
+        title = self.font.render(
+            "Your Quests" if not done else "All quests complete!",
+            True, config.PALETTE["text"],
+        )
+        s.blit(title, (x + 12, y + 6))
+        for i, (text, ok) in enumerate(quests):
+            yy = y + 34 + i * 26
+            box = pygame.Rect(x + 12, yy + 2, 14, 14)
+            pygame.draw.rect(s, (120, 200, 120) if ok else (230, 230, 230),
+                             box, border_radius=3)
+            if ok:
+                pygame.draw.line(s, (255, 255, 255), (box.x + 3, box.y + 7),
+                                 (box.x + 6, box.y + 10), 2)
+                pygame.draw.line(s, (255, 255, 255), (box.x + 6, box.y + 10),
+                                 (box.x + 11, box.y + 4), 2)
+            else:
+                pygame.draw.rect(s, (150, 140, 130), box, 2, border_radius=3)
+            label = self.small.render(text, True,
+                                      (110, 100, 90) if ok else (60, 50, 40))
+            s.blit(label, (x + 34, yy))
+
     def draw_message(self, message):
         if not message:
             return
@@ -249,13 +313,17 @@ class Renderer:
             f"Harmony: {game.shield.harmony:.0f}    GA generation: {game.ga.generation}",
             True, (80, 65, 50))
         s.blit(line2, (panel.x + 24, y)); y += 30
+        hint = self._compass_hints(game)
+        if hint:
+            line2b = self.font.render(hint, True, (60, 90, 60))
+            s.blit(line2b, (panel.x + 24, y)); y += 30
         line3 = self.font.render(
             "Castle: place quartz, crystal, starlight, oak, or castle blocks near the "
             "heart of the realm to raise Harmony.", True, (80, 65, 50))
         s.blit(line3, (panel.x + 24, y)); y += 40
         inv = self.font.render(
-            "Backpack (click an item to move it to your hotbar):", True,
-            config.PALETTE["text"])
+            "Backpack (click: to hotbar. Right-click a hotbar slot below: to backpack)",
+            True, config.PALETTE["text"])
         s.blit(inv, (panel.x + 24, y)); y += 30
         self.backpack_rects = {}
         for r in range(3):
@@ -272,10 +340,64 @@ class Renderer:
                         ct = self.small.render(str(count), True, (40, 34, 28))
                         s.blit(ct, (rect.right - ct.get_width() - 2,
                                     rect.bottom - 16))
+        hot_y = y + 3 * 54 + 16
+        hot_label = self.small.render("Hotbar (right-click to store):", True,
+                                      (110, 90, 70))
+        s.blit(hot_label, (panel.x + 24, hot_y - 18))
+        for i, (item, count) in enumerate(game.inventory.hotbar):
+            x = panel.x + 24 + i * 58
+            rect = pygame.Rect(x, hot_y, 52, 48)
+            self.backpack_rects[(3, i)] = rect
+            pygame.draw.rect(s, (255, 220, 120) if i == game.inventory.selected
+                             else (215, 208, 190), rect, 2, border_radius=4)
+            if item:
+                name, color = ITEMS[item]
+                if item == "wand":
+                    pygame.draw.line(s, (150, 100, 60), rect.center,
+                                     (rect.center[0] + 12, rect.center[1] - 14), 3)
+                    pygame.draw.circle(s, (255, 250, 180),
+                                       (rect.center[0] + 13, rect.center[1] - 15), 4)
+                else:
+                    pygame.draw.rect(s, color, rect.inflate(-16, -16), border_radius=4)
+                if count:
+                    ct = self.small.render(str(count), True, (40, 34, 28))
+                    s.blit(ct, (rect.right - ct.get_width() - 2, rect.bottom - 16))
         hint = self.small.render(
-            "E or Esc to close   |   F5 quick-saves   |   Feed Sunberries to creatures "
-            "with right-click!", True, (110, 90, 70))
+            "E or Esc to close  |  Click backpack item: to hotbar  |  "
+            "Right-click a hotbar row below: to backpack  |  F5 saves",
+            True, (110, 90, 70))
         s.blit(hint, (panel.centerx - hint.get_width() // 2, panel.bottom - 34))
+
+    def _compass_hints(self, game):
+        px = game.player.x
+        parts = []
+        best_c = None
+        best_d = float("inf")
+        for c in game.creatures.creatures:
+            if not c.befriended:
+                d = abs(c.x - px)
+                if d < best_d:
+                    best_c, best_d = c, d
+        if best_c is not None:
+            dist = int(best_d // config.TILE)
+            side = "right" if best_c.x >= px else "left"
+            parts.append(
+                f"A lonely {best_c.species} waits {dist} steps to your {side}"
+            )
+        best_p = None
+        best_d = float("inf")
+        for p in game.pylons.pylons:
+            if not p.restored:
+                d = abs(p.x - px)
+                if d < best_d:
+                    best_p, best_d = p, d
+        if best_p is not None:
+            dist = int(best_d // config.TILE)
+            side = "right" if best_p.x >= px else "left"
+            parts.append(f"a sleeping pylon glows {dist} steps to your {side}")
+        if not parts:
+            return ""
+        return "Where to go: " + "  |  ".join(parts)
 
     def draw_victory(self):
         s = self.screen

@@ -107,7 +107,7 @@ class Shadow:
             self.active = False
             return 0.0
         if abs(self.x - player_x) < config.TILE * 1.2 and shield_strength < 0.4:
-            return config.HARMONY_DECAY if hasattr(config, "HARMONY_DECAY") else 0.5
+            return 3.0 * dt
         return 0.0
 
 

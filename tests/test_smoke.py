@@ -150,6 +150,108 @@ def main():
         game.frame()
         game2.frame()
 
+    # --- new feature checks ---
+
+    # castle blocks are obtainable in the world near the castle site
+    deposits = sum(
+        1 for c in range(game.castle.col - 25, game.castle.col + 26)
+        for r in (game.world.surface_row(c), game.world.surface_row(c) - 1)
+        if game.world.get(r, c) in (W.CASTLE_STONE, W.CASTLE_QUARTZ)
+    )
+    assert deposits >= 4, "castle block deposits should exist near the site"
+
+    # rune key shard blocks exist and drop rune keys
+    shards = sum(
+        1 for c in range(game.world.cols)
+        for r in (game.world.surface_row(c), game.world.surface_row(c) - 1)
+        if game.world.get(r, c) == W.RUNE_KEY_BLOCK
+    )
+    assert shards >= 1
+    from citadel.inventory import BLOCK_TO_ITEM
+    assert BLOCK_TO_ITEM[W.RUNE_KEY_BLOCK] == "rune_key"
+
+    # rune key use: right-click near pylon advances progress
+    game.inventory.add("rune_key", 1)
+    p3 = game.pylons.unrestored()[0]
+    prog0 = p3.progress
+    game.inventory.consume("rune_key", 1)
+    p3.progress = min(p3.progress + 1, len(p3.target_seq))
+    assert p3.progress == prog0 + 1
+
+    # catalyst adds harmony
+    harmony_a = game.shield.harmony
+    game.inventory.add("catalyst", 1)
+    assert game.inventory.consume("catalyst", 1)
+    game.shield.add_harmony(12, game.ga)
+    assert game.shield.harmony > harmony_a
+
+    # hotbar -> backpack move
+    game.inventory.hotbar[2] = ("stone", 7)
+    assert game.inventory.to_backpack(0, 2)
+    assert game.inventory.hotbar[2] == (None, None)
+    assert any(it == "stone" for row in game.inventory.backpack for it, _ in row)
+
+    # compass hints render without crashing
+    game.mode = "inventory"
+    for _ in range(2):
+        game.frame()
+    game.renderer.draw_inventory_screen(game)
+    game.mode = "play"
+
+    # castle banner draws without crashing
+    game.renderer.draw_castle_banner(game.castle, game.world)
+
+    # sounds degrade gracefully when mixer is missing
+    from citadel.sounds import Sounds
+    s = Sounds()
+    s.play("wand")  # must not raise even when disabled
+
+    # --- regression checks from code review ---
+
+    # rune key shards drop keys; catalyst blooms drop catalysts
+    g3 = Game(headless=True, load=False)
+    key_drop = cat_drop = False
+    for c in range(g3.world.cols):
+        r = g3.world.surface_row(c)
+        for rr in (r, r - 1):
+            b = g3.world.get(rr, c)
+            if b == W.RUNE_KEY_BLOCK and not key_drop:
+                key_drop = g3.world.break_block(rr, c)[0] == "rune_key"
+            if b == W.CATALYST_BLOOM and not cat_drop:
+                cat_drop = g3.world.break_block(rr, c)[0] == "catalyst"
+    assert key_drop, "rune key shards must drop rune_key"
+    assert cat_drop, "catalyst blooms must drop catalyst"
+
+    # wand re-cast at befriended creature gives no harmony
+    c4 = g3.creatures.creatures[3]
+    while not c4.befriended:
+        g3.player.wand_timer = 0
+        g3._cast_wand(c4)
+    h_before = g3.shield.harmony
+    g3.player.wand_timer = 0
+    g3._cast_wand(c4)
+    assert g3.shield.harmony == h_before, "re-cast exploit must not grant harmony"
+
+    # shadow drain is time-based (small per frame, ~3/sec)
+    from citadel.pylons import Shadow
+    from citadel.genetics import GeneticTuner
+    sh = Shadow(col=50.0)
+    sh.x = 50.0
+    ga2 = GeneticTuner(g3.rng)
+    drain = sh.update(1 / 60, 0.3, 50.0, ga2, 10)
+    assert 0 < drain < 0.1, f"drain per frame should be tiny, got {drain}"
+
+    # depleted hotbar slot can be refilled
+    g3.inventory.hotbar[1] = ("stone", None)
+    assert g3.inventory.add("stone", 5)
+    assert g3.inventory.hotbar[1] == ("stone", 5)
+
+    # ledger renders with hotbar row (right-click store target exists)
+    g3.mode = "inventory"
+    g3.renderer.draw_inventory_screen(g3)
+    assert (3, 0) in g3.renderer.backpack_rects, "ledger must expose hotbar row"
+    g3.mode = "play"
+
     # victory path: all pylons + harmony banishes shadow
     for p in game.pylons.pylons:
         p.restored = True

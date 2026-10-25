@@ -3,7 +3,7 @@ import numpy as np
 import pygame
 
 from . import config
-from .graphics import make_creature_sprite, make_wizard
+from .graphics import Textures  # noqa: F401
 from .inventory import ITEMS
 from .pylons import RUNE_GLYPHS, RUNE_NAMES
 from .world import BLOCKS
@@ -38,44 +38,172 @@ class Renderer:
         self.small = small_font
         self.textures = textures
         self.cam = Camera()
-        self.wizard = make_wizard()
-        self.sky = self._make_sky()
+        self.wizard = self._make_wizard_frames()
+        self.sky_day = self._make_sky((255, 250, 200))
+        self.sky_night = self._make_sky((230, 230, 255), night=True)
+        self.sky_steps = self._make_sky_steps()
+        self.hills = self._make_hills()
         self.rune_rects = {}
         self.backpack_rects = {}
 
-    def _make_sky(self):
+    def _make_wizard_frames(self):
+        frames = []
+        for phase in range(2):
+            surf = pygame.Surface((config.TILE, config.TILE + 8), pygame.SRCALPHA)
+            bob = 1 if phase else 0
+            pygame.draw.rect(surf, (60, 70, 160, 255),
+                             (10, 14 + bob, 12, 20))
+            pygame.draw.circle(surf, (255, 226, 190, 255), (16, 10 + bob), 7)
+            pygame.draw.polygon(surf, (40, 40, 90, 255),
+                                [(6, 12 + bob), (26, 12 + bob), (16, bob)])
+            pygame.draw.polygon(surf, (150, 220, 255, 255),
+                                [(24, 16 + bob), (30, 22 + bob), (24, 24 + bob)])
+            pygame.draw.circle(surf, (255, 250, 180, 255),
+                               (30, 22 + bob), 3 + (1 if phase else 0))
+            frames.append(surf)
+        return frames
+
+    def _make_hills(self):
+        layers = []
+        depth = 0
+        for (col_a, col_b), speed in (
+            (((120, 150, 180), (150, 175, 205)), 0.15),
+            (((95, 135, 160), (125, 160, 185)), 0.3),
+        ):
+            surf = pygame.Surface((config.SCREEN_W * 2, config.SCREEN_H),
+                                   pygame.SRCALPHA)
+            for x in range(0, config.SCREEN_W * 2, 8):
+                h = int(90 + 40 * np.sin(x * 0.006 + depth * 2)
+                        + 25 * np.sin(x * 0.017 + depth))
+                col = col_a if (x // 8) % 2 == 0 else col_b
+                pygame.draw.rect(surf, (*col, 160),
+                                 (x, config.SCREEN_H - h, 8, h))
+            layers.append((surf, speed))
+            depth += 1
+        return layers
+
+    def _make_sky(self, sun_color, night=False):
         sky = pygame.Surface((config.SCREEN_W, config.SCREEN_H))
-        top = np.array(config.PALETTE["bg_top"], dtype=float)
-        bot = np.array(config.PALETTE["bg_bottom"], dtype=float)
-        for y in range(config.SCREEN_H):
+        top = np.array((25, 30, 60) if night
+                       else config.PALETTE["bg_top"], dtype=float)
+        bot = np.array((60, 70, 110) if night
+                       else config.PALETTE["bg_bottom"], dtype=float)
+        for y in range(0, config.SCREEN_H, 2):
             t = y / config.SCREEN_H
-            c = top + (bot - top) * t
-            pygame.draw.line(sky, c, (0, y), (config.SCREEN_W, y))
-        pygame.draw.circle(sky, (255, 250, 200), (config.SCREEN_W - 160, 100), 34)
-        rng = np.random.default_rng(7)
-        for _ in range(3):
-            cx = int(rng.integers(100, config.SCREEN_W - 100))
-            cy = int(rng.integers(60, 200))
-            pygame.draw.circle(sky, (255, 255, 255), (cx, cy), 26)
-            pygame.draw.circle(sky, (255, 255, 255), (cx + 22, cy + 6), 20)
-            pygame.draw.circle(sky, (255, 255, 255), (cx - 20, cy + 8), 18)
+            c = (top + (bot - top) * t).astype(int)
+            pygame.draw.line(sky, c, (0, y), (config.SCREEN_W, y), 2)
+        if night:
+            rng = np.random.default_rng(7)
+            for _ in range(60):
+                x = int(rng.integers(0, config.SCREEN_W))
+                y = int(rng.integers(0, config.SCREEN_H // 2))
+                s = int(rng.integers(1, 3))
+                pygame.draw.circle(sky, (240, 240, 255), (x, y), s)
+            pygame.draw.circle(sky, (230, 230, 250),
+                               (config.SCREEN_W - 160, 100), 26)
+        else:
+            pygame.draw.circle(sky, sun_color, (config.SCREEN_W - 160, 100), 34)
+            rng = np.random.default_rng(7)
+            for _ in range(3):
+                cx = int(rng.integers(100, config.SCREEN_W - 100))
+                cy = int(rng.integers(60, 200))
+                pygame.draw.circle(sky, (255, 255, 255), (cx, cy), 26)
+                pygame.draw.circle(sky, (255, 255, 255), (cx + 22, cy + 6), 20)
+                pygame.draw.circle(sky, (255, 255, 255), (cx - 20, cy + 8), 18)
         return sky
 
-    def draw_world(self, world):
-        self.screen.blit(self.sky, (0, 0))
-        c0 = max(0, int(self.cam.x // config.TILE) - 1)
-        c1 = min(world.cols, int((self.cam.x + config.SCREEN_W) // config.TILE) + 2)
-        r0 = max(0, int(self.cam.y // config.TILE) - 1)
-        r1 = min(world.rows, int((self.cam.y + config.SCREEN_H) // config.TILE) + 2)
-        for r in range(r0, r1):
-            for c in range(c0, c1):
-                b = world.get(r, c)
+    def _make_sky_steps(self, levels=6):
+        steps = [self.sky_day]
+        for i in range(1, levels):
+            amt = i / levels
+            mixed = self.sky_day.copy()
+            night = self.sky_night.copy()
+            night.set_alpha(int(255 * amt))
+            mixed.blit(night, (0, 0))
+            steps.append(mixed)
+        steps.append(self.sky_night)
+        return steps
+
+    def draw_sky(self, day_t):
+        night_amt = max(0.0, np.sin((day_t - 0.25) * 2 * np.pi))
+        idx = int(night_amt * (len(self.sky_steps) - 1) + 0.5)
+        self.screen.blit(self.sky_steps[idx], (0, 0))
+
+    def draw_parallax(self):
+        if config.PERFORMANCE_MODE:
+            return
+        for surf, speed in self.hills:
+            x = -int(self.cam.x * speed) % config.SCREEN_W
+            self.screen.blit(surf, (x - config.SCREEN_W, 0))
+            self.screen.blit(surf, (x, 0))
+
+    _glow_cache = {}
+
+    def _glow_surface(self, color, radius):
+        key = (color, radius)
+        surf = self._glow_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            steps = 4
+            for i in range(steps, 0, -1):
+                a = int(26 * i / steps)
+                pygame.draw.circle(surf, (*color, a),
+                                   (radius, radius), int(radius * i / steps))
+            self._glow_cache[key] = surf
+        return surf
+
+    def draw_glow(self, points):
+        if config.PERFORMANCE_MODE:
+            return
+        for wx, wy, color, radius in points:
+            x, y = self.cam.apply(wx, wy)
+            if not (-100 < x < config.SCREEN_W + 100):
+                continue
+            surf = self._glow_surface(color, radius)
+            self.screen.blit(surf, (x - radius, y - radius),
+                             special_flags=pygame.BLEND_RGB_ADD)
+
+    def _rebuild_world_cache(self, world):
+        surf = pygame.Surface((world.cols * config.TILE,
+                               world.rows * config.TILE))
+        for r in range(world.rows):
+            for c in range(world.cols):
+                b = int(world.grid[r, c])
                 if b == 0:
                     continue
-                x, y = self.cam.apply(c * config.TILE, r * config.TILE)
                 tex = self.textures.blocks.get(b)
                 if tex:
-                    self.screen.blit(tex, (x, y))
+                    surf.blit(tex, (c * config.TILE, r * config.TILE))
+        self._world_surf = surf
+        self._world_dirty = set()
+
+    def mark_dirty(self, row, col):
+        if getattr(self, "_world_dirty", None) is not None:
+            self._world_dirty.add((row, col))
+
+    def draw_world(self, world, day_t=0.25, glow_points=None):
+        self.draw_sky(day_t)
+        self.draw_parallax()
+        if getattr(self, "_world_surf", None) is None:
+            self._rebuild_world_cache(world)
+        else:
+            for (r, c) in self._world_dirty:
+                surf = self._world_surf
+                rect = pygame.Rect(c * config.TILE, r * config.TILE,
+                                   config.TILE, config.TILE)
+                surf.fill((0, 0, 0), rect)
+                b = int(world.grid[r, c])
+                tex = self.textures.blocks.get(b)
+                if tex:
+                    surf.blit(tex, rect.topleft)
+            self._world_dirty.clear()
+        area = pygame.Rect(int(self.cam.x), int(self.cam.y),
+                           config.SCREEN_W, config.SCREEN_H)
+        area = area.clip(self._world_surf.get_rect())
+        self.screen.blit(self._world_surf,
+                         (-int(self.cam.x), -int(self.cam.y)), area)
+        if glow_points:
+            self.draw_glow(glow_points)
 
     def highlight_tile(self, row, col, ok=True):
         x, y = self.cam.apply(col * config.TILE, row * config.TILE)
@@ -85,11 +213,12 @@ class Renderer:
 
     def draw_player(self, player):
         x, y = self.cam.apply(player.x, player.y)
-        rect = self.wizard.get_rect(center=(x, y))
+        moving = abs(player.vx) > 1
+        frame = self.wizard[pygame.time.get_ticks() // 200 % 2] if moving \
+            else self.wizard[0]
         if player.facing < 0:
-            self.screen.blit(pygame.transform.flip(self.wizard, True, False), rect)
-        else:
-            self.screen.blit(self.wizard, rect)
+            frame = pygame.transform.flip(frame, True, False)
+        self.screen.blit(frame, frame.get_rect(center=(x, y)))
 
     def draw_castle_banner(self, castle, world):
         col = castle.col
@@ -118,11 +247,16 @@ class Renderer:
         self.screen.blit(label, (bg.x + 4, bg.y + 3))
 
     def draw_creatures(self, creatures):
+        tick = pygame.time.get_ticks() // 250
         for c in creatures:
             x, y = self.cam.apply(c.x, c.y + c.bob)
-            sprite = make_creature_sprite(c.color)
-            self.screen.blit(sprite, sprite.get_rect(center=(x, y)))
-            name = self.small.render(c.species, True, (50, 50, 60))
+            frames = c.sprite_frames()
+            frame = frames[int(tick % 2)]
+            if c.dir < 0:
+                frame = pygame.transform.flip(frame, True, False)
+            self.screen.blit(frame, frame.get_rect(center=(x, y)))
+            label = c.name if c.name else c.species
+            name = self.small.render(label, True, (50, 50, 60))
             self.screen.blit(name, (x - name.get_width() // 2, y - 26))
             if not c.befriended:
                 total = c.max_hearts
@@ -139,7 +273,12 @@ class Renderer:
     def draw_pylons(self, pylons):
         for p in pylons:
             x, y = self.cam.apply(p.x, p.y)
-            color = (255, 214, 92) if p.restored else (110, 95, 150)
+            if p.restored:
+                color = (255, 214, 92)
+            elif p.awakened:
+                color = (110, 95, 150)
+            else:
+                color = (70, 62, 92)
             pygame.draw.rect(
                 self.screen, color,
                 (x - config.TILE // 2, y - config.TILE, config.TILE, config.TILE * 2),
@@ -218,11 +357,15 @@ class Renderer:
         friends = sum(1 for c in game.creatures.creatures if c.befriended)
         total_friends = len(game.creatures.creatures)
         restored = len(game.pylons.pylons) - len(game.pylons.unrestored())
+        awake = sum(1 for p in game.pylons.pylons if p.awakened)
         total_pylons = len(game.pylons.pylons)
         harmony = game.shield.harmony
+        pyl_label = (f"Restore pylons ({restored}/{awake})"
+                     if awake < total_pylons
+                     else f"Restore pylons ({restored}/{total_pylons})")
         quests = [
             (f"Befriend creatures ({friends}/{total_friends})", friends >= total_friends),
-            (f"Restore pylons ({restored}/{total_pylons})", restored >= total_pylons),
+            (pyl_label, restored >= total_pylons),
             ("Fill Harmony to 100", harmony >= 100),
         ]
         done = all(ok for _, ok in quests)
@@ -302,7 +445,7 @@ class Renderer:
         s.blit(title, (panel.centerx - title.get_width() // 2, panel.y + 16))
         y = panel.y + 66
         friends = ", ".join(
-            f"{c.species} {'\u2665' if c.befriended else '?'}"
+            f"{c.name or c.species} {'\u2665' if c.befriended else '?'}"
             for c in game.creatures.creatures
         )
         line1 = self.font.render(f"Citizens of the realm:  {friends}", True, (80, 65, 50))
@@ -398,6 +541,86 @@ class Renderer:
         if not parts:
             return ""
         return "Where to go: " + "  |  ".join(parts)
+
+    title_button_rect = None
+
+    def draw_title(self, first=True):
+        s = self.screen
+        overlay = pygame.Surface((config.SCREEN_W, config.SCREEN_H),
+                                 pygame.SRCALPHA)
+        overlay.fill((20, 24, 50, 140))
+        s.blit(overlay, (0, 0))
+        title = pygame.transform.scale2x(
+            self.big.render("Citadel of Friendship & Magic", True, (255, 245, 210)))
+        s.blit(title, title.get_rect(center=(config.SCREEN_W // 2, 160)))
+        sub = self.font.render(
+            "Build a castle, make friends, and light up the world!",
+            True, (230, 230, 240))
+        s.blit(sub, sub.get_rect(center=(config.SCREEN_W // 2, 240)))
+        btn_w, btn_h = 280, 80
+        self.title_button_rect = pygame.Rect(
+            config.SCREEN_W // 2 - btn_w // 2, 340, btn_w, btn_h)
+        pulse = 3 * int(np.sin(pygame.time.get_ticks() * 0.005))
+        pygame.draw.rect(s, (255, 214, 92), self.title_button_rect.inflate(
+            pulse * 2, pulse * 2), border_radius=14)
+        label = self.big.render("Play!", True, (60, 40, 20))
+        s.blit(label, label.get_rect(center=self.title_button_rect.center))
+        hint = self.small.render(
+            "or press Enter/Space  -  H for help  -  gamepads work too!",
+            True, (200, 200, 215))
+        s.blit(hint, hint.get_rect(center=(config.SCREEN_W // 2, 470)))
+
+    def draw_hints(self):
+        s = self.screen
+        overlay = pygame.Surface((config.SCREEN_W, config.SCREEN_H),
+                                 pygame.SRCALPHA)
+        overlay.fill((20, 24, 50, 150))
+        s.blit(overlay, (0, 0))
+        panel = pygame.Rect(240, 80, config.SCREEN_W - 480,
+                            config.SCREEN_H - 160)
+        pygame.draw.rect(s, (246, 240, 225), panel, border_radius=12)
+        pygame.draw.rect(s, (90, 70, 50), panel, 3, border_radius=12)
+        title = self.big.render("How to Play", True, config.PALETTE["text"])
+        s.blit(title, title.get_rect(center=(panel.centerx, panel.y + 40)))
+        hints = [
+            ("Move", "A / D or Left / Right arrows (or gamepad stick)"),
+            ("Jump", "W, Space, or Up arrow"),
+            ("Break blocks", "Hold LEFT click on a block near you"),
+            ("Place blocks", "RIGHT click with blocks selected (1-9 / scroll)"),
+            ("Make friends", "LEFT click creatures with your Wand to charm "
+                "them - or feed them Sunberries (RIGHT click)!"),
+            ("Light pylons", "LEFT click a sleeping pylon, then click the "
+                "runes in the lit order"),
+            ("Keys & Catalysts", "Mine glowing shards and blooms; RIGHT click "
+                "a pylon to use a Rune Key"),
+            ("Friendship Ledger", "E - see creatures, find where to go, move "
+                "items between hotbar and backpack"),
+            ("Save", "F5 quick-saves; the game also saves when you quit"),
+        ]
+        y = panel.y + 80
+        for head, body in hints:
+            h = self.font.render(head, True, (150, 90, 40))
+            s.blit(h, (panel.x + 30, y))
+            b = self.font.render(body, True, (60, 50, 40))
+            s.blit(b, (panel.x + 210, y))
+            y += 34
+        foot = self.small.render(
+            "Press H or click to go back to the game", True, (110, 90, 70))
+        s.blit(foot, foot.get_rect(center=(panel.centerx, panel.bottom - 28)))
+
+    def draw_naming(self, text):
+        s = self.screen
+        box = pygame.Rect(config.SCREEN_W // 2 - 240, 200, 480, 90)
+        pygame.draw.rect(s, (246, 240, 225), box, border_radius=10)
+        pygame.draw.rect(s, (90, 70, 50), box, 3, border_radius=10)
+        t1 = self.font.render("Name your friend:", True, (60, 50, 40))
+        s.blit(t1, (box.x + 20, box.y + 14))
+        caret = "|" if pygame.time.get_ticks() // 400 % 2 == 0 else ""
+        t2 = self.big.render(text + caret, True, (150, 90, 40))
+        s.blit(t2, (box.x + 20, box.y + 40))
+        foot = self.small.render("Enter to confirm  -  Esc to cancel",
+                                 True, (110, 90, 70))
+        s.blit(foot, (box.right - foot.get_width() - 14, box.bottom - 22))
 
     def draw_victory(self):
         s = self.screen

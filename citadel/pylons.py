@@ -26,6 +26,7 @@ class Pylon:
         self.shield_radius = 0.0
         self.last_feedback = None
         self.feedback_t = 0.0
+        self.awakened = pid == 0   # first pylon starts awake; others wake in order
 
     def rune_order_hint(self):
         return list(self.target_seq)
@@ -64,14 +65,27 @@ class PylonManager:
             p = Pylon(i, col, row, ga.genes["pylon_runes"], rng)
             self.pylons.append(p)
 
-    def near(self, x, y, dist=config.TILE * 4):
+    def awakened(self):
+        return [p for p in self.pylons if p.awakened]
+
+    def unrestored(self):
+        return [p for p in self.pylons if p.awakened and not p.restored]
+
+    def on_restored(self, pylon):
+        """Wake the next pylon in order so progression stays gentle."""
         for p in self.pylons:
-            if ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5 <= dist:
+            if not p.awakened:
+                p.awakened = True
                 return p
         return None
 
-    def unrestored(self):
-        return [p for p in self.pylons if not p.restored]
+    def near(self, x, y, dist=config.TILE * 4):
+        for p in self.pylons:
+            if not p.awakened:
+                continue
+            if ((p.x - x) ** 2 + (p.y - y) ** 2) ** 0.5 <= dist:
+                return p
+        return None
 
     def all_restored(self):
         return all(p.restored for p in self.pylons)

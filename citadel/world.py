@@ -63,6 +63,7 @@ SOLID = {b for b in BLOCKS if b != AIR}
 
 class World:
     def __init__(self, rng, cols=None, rows=None, castle_col=None):
+        self.on_change = None      # renderer hook: (row, col)
         self.rng = rng
         self.cols = cols or config.WORLD_COLS
         self.rows = rows or config.WORLD_ROWS
@@ -164,6 +165,8 @@ class World:
     def set(self, row, col, block):
         if self.in_bounds(row, col):
             self.grid[row, col] = block
+            if self.on_change is not None:
+                self.on_change(row, col)
             return True
         return False
 
@@ -180,6 +183,8 @@ class World:
         block = self.get(row, col)
         if block in BREAKABLE:
             self.grid[row, col] = AIR
+            if self.on_change is not None:
+                self.on_change(row, col)
             if block == BERRY_BUSH:
                 return "berry", 2
             if block == THORNS:
@@ -210,6 +215,8 @@ class World:
                 _, r, c, b = entry
                 if self.get(r, c) == AIR:
                     self.grid[r, c] = b
+                    if self.on_change is not None:
+                        self.on_change(r, c)
             else:
                 still.append(entry)
         self.regrow = still

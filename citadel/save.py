@@ -8,7 +8,7 @@ from . import config
 def save_game(game, path=None):
     path = path or config.SAVE_PATH
     data = {
-        "version": 1,
+        "version": 2,
         "player": {
             "x": game.player.x, "y": game.player.y,
             "facing": game.player.facing,
@@ -28,6 +28,7 @@ def save_game(game, path=None):
                 "cid": c.cid, "species": c.species, "color": list(c.color),
                 "x": c.x, "hearts": c.hearts, "max_hearts": c.max_hearts,
                 "befriended": c.befriended, "home_x": getattr(c, "home_x", None),
+                "seed": c.seed, "name": c.name,
             }
             for c in game.creatures.creatures
         ],
@@ -36,6 +37,7 @@ def save_game(game, path=None):
                 "pid": p.pid, "col": p.col, "row": p.row,
                 "restored": p.restored, "progress": p.progress,
                 "target_seq": p.target_seq, "shield_radius": p.shield_radius,
+                "awakened": p.awakened,
             }
             for p in game.pylons.pylons
         ],
@@ -68,11 +70,18 @@ def load_game(game, path=None):
         return False
     with open(path) as f:
         data = json.load(f)
+    if data.get("version") != 2:
+        raise ValueError("save from an incompatible game version")
+    w = data.get("world", {})
+    if w.get("cols") != game.world.cols or w.get("rows") != game.world.rows:
+        raise ValueError("save has a different world size")
     import numpy as np
 
     w = data["world"]
     game.world.grid = np.array(w["grid"], dtype=np.int16)
     game.world.regrow = [list(r) for r in w.get("regrow", [])]
+    if hasattr(game, "renderer") and game.renderer is not None:
+        game.renderer._world_surf = None
     p = data["player"]
     game.player.x, game.player.y = p["x"], p["y"]
     game.player.facing = p.get("facing", 1)
@@ -85,6 +94,7 @@ def load_game(game, path=None):
         live.color = tuple(saved["color"])
         live.hearts = saved["hearts"]
         live.befriended = saved["befriended"]
+        live.name = saved.get("name")
         if saved.get("home_x"):
             live.home_x = saved["home_x"]
     for saved, live in zip(data["pylons"], game.pylons.pylons):
@@ -92,6 +102,7 @@ def load_game(game, path=None):
         live.progress = saved["progress"]
         live.target_seq = saved["target_seq"]
         live.shield_radius = saved["shield_radius"]
+        live.awakened = saved.get("awakened", live.pid == 0)
     cast = data["castle"]
     game.castle.blocks = {(r, c): b for r, c, b in cast["blocks"]}
     game.castle.rating = cast["rating"]

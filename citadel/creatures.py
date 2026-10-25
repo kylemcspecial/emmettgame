@@ -14,7 +14,7 @@ SPECIES = [
 
 
 class Creature:
-    def __init__(self, cid, species, color, col, row, hearts, favorite):
+    def __init__(self, cid, species, color, col, row, hearts, favorite, seed):
         self.cid = cid
         self.species = species
         self.color = color
@@ -32,6 +32,9 @@ class Creature:
         self.hop_t = float(np.random.uniform(0, 3))
         self.bob = 0.0
         self.bob_t = float(np.random.uniform(0, 6.28))
+        self.seed = seed
+        self.name = None               # kid-assigned name (Friendship Album)
+        self.home_x = None             # set on befriending; castle-side home
 
     def advance_charm(self):
         if self.hearts > 0:
@@ -45,7 +48,7 @@ class Creature:
         self.bob_t += dt * 2.5
         self.bob = np.sin(self.bob_t) * 3
         if self.befriended:
-            target_x = self.home_x
+            target_x = self.home_x if self.home_x is not None else self.x
             diff = target_x - self.x
             if abs(diff) > 4:
                 self.x += np.sign(diff) * config.MOVE_SPEED * 0.6 * dt
@@ -73,6 +76,10 @@ class Creature:
         self.row = world.surface_row(int(self.x / config.TILE))
         self.y = (self.row - 0.5) * config.TILE
 
+    def sprite_frames(self, size=30):
+        from .sprites import get_creature_sprites
+        return get_creature_sprites(self.species, self.color, self.seed, size)
+
 
 class CreatureManager:
     def __init__(self, rng, world, ga):
@@ -96,7 +103,8 @@ class CreatureManager:
                 k += 1
                 name = f"{species} {k}"
             names.add(name)
-            c = Creature(i, species, color, col, row, hearts, "berry")
+            c = Creature(i, species, color, col, row, hearts, "berry",
+                         seed=int(rng.integers(0, 2**31)))
             c.x = (col + 0.5) * config.TILE
             c.y = (row + 0.5) * config.TILE
             self.creatures.append(c)

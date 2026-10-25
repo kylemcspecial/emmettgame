@@ -19,30 +19,152 @@ def _noise_surface(size, base, variance, seed):
     return pygame.transform.scale(surf, (size, size))
 
 
+def _shift(color, amt):
+    return pygame.Color(
+        max(0, min(255, color.r + amt)),
+        max(0, min(255, color.g + amt)),
+        max(0, min(255, color.b + amt)),
+    )
+
+
+def _bevel(tex, base):
+    """Light from top-left, shade at bottom-right: instant depth."""
+    t = config.TILE
+    pygame.draw.line(tex, _shift(base, 34), (0, 0), (t - 1, 0), 2)
+    pygame.draw.line(tex, _shift(base, 34), (0, 0), (0, t - 1), 2)
+    pygame.draw.line(tex, _shift(base, -38), (0, t - 2), (t - 1, t - 2), 2)
+    pygame.draw.line(tex, _shift(base, -38), (t - 2, 0), (t - 2, t - 1), 2)
+
+
+def _speckle(tex, rng, base, n, lo=-20, hi=20, size=(2, 5)):
+    t = config.TILE
+    for _ in range(n):
+        x = int(rng.integers(0, t - size[0]))
+        y = int(rng.integers(0, t - size[1]))
+        w = int(rng.integers(size[0], size[0] + 4))
+        h = int(rng.integers(size[1], size[1] + 4))
+        pygame.draw.rect(tex, _shift(base, int(rng.integers(lo, hi + 1))),
+                         (x, y, w, h))
+
+
 class Textures:
     def __init__(self):
         self.blocks = {}
-        for i, (bid, (name, color)) in enumerate(BLOCKS.items()):
+        for bid, (name, color) in BLOCKS.items():
             if bid == 0 or color is None:
                 continue
-            tex = pygame.Surface((config.TILE, config.TILE))
-            base = pygame.Color(*color)
-            tex.fill(base)
-            rng = np.random.default_rng(1000 + bid)
-            for _ in range(14):
-                x = int(rng.integers(0, config.TILE))
-                y = int(rng.integers(0, config.TILE))
-                w = int(rng.integers(3, 10))
-                h = int(rng.integers(3, 10))
-                shade = int(rng.integers(-28, 29))
-                c = pygame.Color(
-                    max(0, min(255, base.r + shade)),
-                    max(0, min(255, base.g + shade)),
-                    max(0, min(255, base.b + shade)),
-                )
-                pygame.draw.rect(tex, c, (x, y, w, h))
-            pygame.draw.rect(tex, (0, 0, 0), tex.get_rect(), 1)
-            self.blocks[bid] = tex
+            self.blocks[bid] = self._make(bid, name, pygame.Color(*color))
+
+    def _make(self, bid, name, base):
+        import numpy as np
+        t = config.TILE
+        tex = pygame.Surface((t, t))
+        rng = np.random.default_rng(1000 + bid)
+        tex.fill(base)
+
+        if bid == 1:  # grass: dirt below + blade fringe on top
+            dirt = pygame.Color(122, 87, 51)
+            tex.fill(dirt)
+            _speckle(tex, rng, dirt, 10, -18, 14)
+            pygame.draw.rect(tex, base, (0, 0, t, 7))
+            for x in range(0, t, 3):
+                blade_h = int(rng.integers(4, 9))
+                pygame.draw.line(tex, _shift(base, int(rng.integers(-15, 20))),
+                                 (x, 7), (x + int(rng.integers(-2, 3)),
+                                          7 - blade_h), 2)
+        elif bid == 2:  # dirt
+            _speckle(tex, rng, base, 14, -22, 16)
+            for _ in range(4):
+                x, y = int(rng.integers(2, t - 6)), int(rng.integers(2, t - 6))
+                pygame.draw.circle(tex, _shift(base, -25), (x, y),
+                                   int(rng.integers(1, 3)))
+        elif bid == 3:  # stone: cracks
+            _speckle(tex, rng, base, 8, -18, 12)
+            for _ in range(3):
+                x = int(rng.integers(2, t - 2))
+                y = int(rng.integers(2, t - 2))
+                pts = [(x, y)]
+                for _ in range(3):
+                    x += int(rng.integers(-5, 6))
+                    y += int(rng.integers(2, 6))
+                    pts.append((max(1, min(t - 2, x)),
+                                max(1, min(t - 2, y))))
+                pygame.draw.lines(tex, _shift(base, -32), False, pts, 1)
+        elif bid == 4:  # ancient oak: vertical grain + knot
+            for x in range(0, t, 4):
+                pygame.draw.line(tex, _shift(base, int(rng.integers(-14, 12))),
+                                 (x, 0), (x + int(rng.integers(-1, 2)), t - 1), 2)
+            kx, ky = int(rng.integers(6, t - 6)), int(rng.integers(6, t - 6))
+            pygame.draw.circle(tex, _shift(base, -30), (kx, ky), 4)
+            pygame.draw.circle(tex, _shift(base, -55), (kx, ky), 2)
+        elif bid in (5, 10, 11):  # quartz family: smooth polished sheen
+            _speckle(tex, rng, base, 4, -8, 10, size=(3, 6))
+            pygame.draw.line(tex, _shift(base, 25), (3, t - 5),
+                             (t - 5, 3), 2)
+            pygame.draw.line(tex, _shift(base, 18), (6, t - 8),
+                             (t - 8, 6), 1)
+        elif bid == 6:  # crystal: facets
+            cx, cy = t // 2, t // 2
+            for (dx, dy) in ((-8, -6), (7, -7), (-6, 8), (8, 7)):
+                pygame.draw.polygon(tex, _shift(base, -35),
+                                    [(cx, cy), (cx + dx, cy + dy),
+                                     (cx + dx, cy)])
+            pygame.draw.polygon(tex, _shift(base, 30),
+                                [(cx, cy), (cx - 6, cy - 7), (cx + 1, cy - 10)])
+            pygame.draw.line(tex, (255, 255, 255), (cx - 4, cy - 4),
+                             (cx + 4, cy + 3), 1)
+        elif bid == 7:  # starlight: glowing core + sparkle cross
+            cx, cy = t // 2, t // 2
+            for r, a in ((9, 30), (6, 60), (3, 90)):
+                glow = pygame.Surface((t, t), pygame.SRCALPHA)
+                pygame.draw.circle(glow, (base.r, base.g, base.b, a),
+                                   (cx, cy), r)
+                tex.blit(glow, (0, 0))
+            pygame.draw.line(tex, (255, 255, 230), (cx - 8, cy),
+                             (cx + 8, cy), 1)
+            pygame.draw.line(tex, (255, 255, 230), (cx, cy - 8),
+                             (cx, cy + 8), 1)
+        elif bid == 8:  # dark thorns: jagged spikes
+            dark = pygame.Color(45, 30, 45)
+            tex.fill(dark)
+            for _ in range(6):
+                x = int(rng.integers(1, t - 1))
+                h = int(rng.integers(8, 18))
+                pygame.draw.polygon(tex, base,
+                                    [(x, t), (x + 2, t - h),
+                                     (x + 4, t)])
+            _speckle(tex, rng, dark, 6, -10, 10)
+        elif bid == 9:  # berry bush: leafy clumps + berries
+            for _ in range(8):
+                x, y = int(rng.integers(2, t - 5)), int(rng.integers(2, t - 5))
+                pygame.draw.circle(tex, _shift(base, int(rng.integers(-20, 25))),
+                                   (x, y), int(rng.integers(3, 6)))
+            for _ in range(4):
+                x, y = int(rng.integers(4, t - 4)), int(rng.integers(4, t - 4))
+                pygame.draw.circle(tex, (255, 90, 120), (x, y), 2)
+                pygame.draw.circle(tex, (255, 170, 190), (x - 1, y - 1), 1)
+        elif bid == 12:  # rune key shard
+            cx, cy = t // 2, t // 2
+            pygame.draw.polygon(tex, base,
+                                [(cx, 2), (t - 4, cy), (cx, t - 2), (4, cy)])
+            pygame.draw.polygon(tex, _shift(base, 40),
+                                [(cx, 6), (t - 8, cy), (cx, t - 6)])
+            pygame.draw.line(tex, (255, 255, 255), (cx, 6), (cx, t - 6), 1)
+        elif bid == 13:  # catalyst bloom: petals
+            cx, cy = t // 2, t // 2
+            for i in range(6):
+                a = i * np.pi / 3
+                pygame.draw.ellipse(
+                    tex, _shift(base, -18),
+                    (int(cx + 6 * np.cos(a)) - 5,
+                     int(cy + 6 * np.sin(a)) - 5, 10, 10))
+            pygame.draw.circle(tex, (255, 230, 180), (cx, cy), 4)
+        else:
+            _speckle(tex, rng, base, 10, -20, 20)
+
+        _bevel(tex, base)
+        pygame.draw.rect(tex, _shift(base, -55), tex.get_rect(), 1)
+        return pygame.Surface.convert(tex)
 
 
 def make_creature_sprite(color, size=26):

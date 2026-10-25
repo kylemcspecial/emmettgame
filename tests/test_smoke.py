@@ -549,3 +549,26 @@ def check_edge_regression():
 
 
 check_edge_regression()
+
+
+def check_graphics_upgrades():
+    """New graphics features build and render without crashing."""
+    g = Game(headless=True, load=False)
+    g.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    for _ in range(10):
+        g.frame()
+    r = g.renderer
+    r.draw_blob_shadow(g.player.x, g.player.y + 20)
+    r.draw_time_overlay(0.5)   # night: vignette path
+    r.draw_time_overlay(0.35)  # golden hour: tint path
+    r.draw_time_overlay(0.25)  # day: no-op path
+    assert len(r.wizard) == 3  # stand / walk / jump poses
+    from citadel.graphics import Textures
+    from citadel import world as W
+    tex = Textures()
+    assert set(tex.blocks) == {b for b in W.BLOCKS
+                               if b != 0 and W.BLOCKS[b][1]}
+    print("graphics upgrades OK")
+
+
+check_graphics_upgrades()

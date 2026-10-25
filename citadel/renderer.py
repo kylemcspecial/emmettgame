@@ -49,28 +49,56 @@ class Renderer:
         self.backpack_rects = {}
 
     def _make_wizard_frames(self):
+        W, H = config.TILE, config.TILE + 10
         frames = []
         for phase in range(3):  # 0 stand, 1 walk-bob, 2 jump
-            surf = pygame.Surface((config.TILE, config.TILE + 8), pygame.SRCALPHA)
+            surf = pygame.Surface((W, H), pygame.SRCALPHA)
             bob = 1 if phase == 1 else 0
             jump = phase == 2
             lift = -2 if jump else 0
-            robe = (10, 16 + bob + lift, 12, 18) if jump else (10, 14 + bob, 12, 20)
-            pygame.draw.rect(surf, (60, 70, 160, 255), robe)
-            pygame.draw.circle(surf, (255, 226, 190, 255),
-                               (16, 10 + bob + lift), 7)
-            pygame.draw.polygon(surf, (40, 40, 90, 255),
-                                [(6, 12 + bob + lift),
-                                 (26, 12 + bob + lift), (16, bob + lift)])
-            wand_y = 14 + bob if jump else 16 + bob
-            pygame.draw.polygon(surf, (150, 220, 255, 255),
-                                [(24, wand_y), (32, wand_y - 10),
-                                 (24, wand_y + 2)])
+            cx = 16
+            # cape behind the body (sways with motion)
+            cape_pts = [(cx - 4, 16 + bob + lift), (cx - 11, 26 + bob),
+                        (cx - 3, 30 + bob)]
+            pygame.draw.polygon(surf, (150, 60, 110, 255), cape_pts)
+            # robe body with left-lit shading
+            robe = (cx - 6, 14 + bob + lift, 12, 18) \
+                if jump else (cx - 6, 14 + bob, 12, 20)
+            pygame.draw.rect(surf, (70, 80, 170, 255), robe)
+            pygame.draw.rect(surf, (100, 112, 205, 255),
+                              (robe[0], robe[1], 4, robe[3]))
+            # belt
+            pygame.draw.rect(surf, (230, 190, 90, 255),
+                             (robe[0], robe[1] + 11, 12, 2))
+            # head + hat
+            hy = 10 + bob + lift
+            pygame.draw.circle(surf, (255, 226, 190, 255), (cx, hy), 6)
+            pygame.draw.circle(surf, (255, 240, 215, 255), (cx - 2, hy - 1), 3)
+            pygame.draw.polygon(surf, (50, 50, 110, 255),
+                                [(cx - 9, hy - 3), (cx + 9, hy - 3),
+                                 (cx + 3, hy - 22)])
+            pygame.draw.rect(surf, (65, 65, 130, 255),
+                             (cx - 11, hy - 5, 22, 3))
+            # star on the hat
+            pygame.draw.circle(surf, (255, 214, 92, 255),
+                               (cx + 2, hy - 12), 2)
+            # wand (raised when jumping)
+            wand_y = hy + 4 if jump else hy + 6 + bob
+            pygame.draw.line(surf, (150, 100, 60, 255),
+                             (cx + 8, wand_y), (cx + 14, wand_y - 9), 2)
             pygame.draw.circle(surf, (255, 250, 180, 255),
-                               (32, wand_y - 11), 4 if jump else 3)
+                               (cx + 15, wand_y - 10), 4 if jump else 3)
             if jump:
+                halo = pygame.Surface((12, 12), pygame.SRCALPHA)
+                pygame.draw.circle(halo, (255, 250, 180, 90), (6, 6), 5)
+                surf.blit(halo, (cx + 9, wand_y - 16))
                 pygame.draw.polygon(surf, (255, 226, 190, 255),
-                                    [(8, 34), (14, 30), (10, 38)])
+                                    [(cx - 5, 32), (cx + 1, 28), (cx - 3, 36)])
+            # dark outline pass for readability
+            mask = pygame.mask.from_surface(surf)
+            outline = mask.outline()
+            for (ox, oy) in outline:
+                surf.set_at((ox, oy), (30, 25, 45, 255))
             frames.append(surf)
         return frames
 
@@ -162,6 +190,41 @@ class Renderer:
                                    (radius, radius), int(radius * i / steps))
             self._glow_cache[key] = surf
         return surf
+
+    _vignette = None
+    _tint = None
+
+    def draw_time_overlay(self, day_t):
+        """Warm tint at dawn/dusk; dark vignette + light pool at night."""
+        s = self.screen
+        night_amt = max(0.0, np.sin((day_t - 0.25) * 2 * np.pi))
+        if 0.15 < night_amt < 0.85:
+            # golden-hour tint during transitions: BLEND_RGB_ADD ignores
+            # alpha, so pre-scale the color by the intended strength
+            strength = 26 / 255
+            warm = (int(255 * strength), int(180 * strength), int(90 * strength))
+            if self._tint is None:
+                self._tint = pygame.Surface(
+                    (config.SCREEN_W, config.SCREEN_H), pygame.SRCALPHA)
+            self._tint.fill(warm)
+            s.blit(self._tint, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        if night_amt > 0.4 and not config.PERFORMANCE_MODE:
+            if self._vignette is None:
+                ys, xs = np.mgrid[0:config.SCREEN_H, 0:config.SCREEN_W]
+                cx, cy = config.SCREEN_W / 2, config.SCREEN_H / 2
+                d = np.sqrt(((xs - cx) / (config.SCREEN_W / 2)) ** 2
+                            + ((ys - cy) / (config.SCREEN_H / 2)) ** 2)
+                alpha = np.clip((d - 0.55) / 0.45, 0, 1) ** 1.6
+                arr = np.zeros((config.SCREEN_H, config.SCREEN_W, 4),
+                               dtype=np.uint8)
+                arr[..., 0] = 10
+                arr[..., 1] = 12
+                arr[..., 2] = 40
+                arr[..., 3] = (alpha * 130).astype(np.uint8)
+                self._vignette = pygame.image.frombuffer(
+                    arr.tobytes(), (config.SCREEN_W, config.SCREEN_H),
+                    "RGBA").convert_alpha()
+            s.blit(self._vignette, (0, 0))
 
     def draw_glow(self, points):
         if config.PERFORMANCE_MODE:
@@ -262,8 +325,22 @@ class Renderer:
         color = (255, 255, 255) if ok else (255, 120, 120)
         pygame.draw.rect(self.screen, color, rect, 2)
 
+    _shadow_ell = None
+
+    def draw_blob_shadow(self, wx, wy, width=20):
+        """Soft ellipse shadow on the ground below an entity."""
+        if self._shadow_ell is None:
+            self._shadow_ell = pygame.Surface((48, 16), pygame.SRCALPHA)
+        s = self._shadow_ell
+        s.fill((0, 0, 0, 0))
+        pygame.draw.ellipse(s, (20, 16, 30, 70),
+                            (24 - width // 2, 2, width, 10))
+        x, y = self.cam.apply(wx, wy)
+        self.screen.blit(s, (x - 24, y - 8))
+
     def draw_player(self, player):
         x, y = self.cam.apply(player.x, player.y)
+        self.draw_blob_shadow(player.x, player.y + 20, width=18)
         if not player.on_ground:
             frame = self.wizard[2]
         else:
@@ -361,6 +438,7 @@ class Renderer:
         tick = pygame.time.get_ticks() // 250
         for c in creatures:
             x, y = self.cam.apply(c.x, c.y + c.bob)
+            self.draw_blob_shadow(c.x, c.y + 14, width=16)
             frames = c.sprite_frames()
             frame = frames[int(tick % 2)]
             if c.dir < 0:

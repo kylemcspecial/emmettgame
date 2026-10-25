@@ -5,7 +5,19 @@ import os
 from . import config
 
 SETTINGS_PATH = "settings.json"
-KEYS = ("performance_mode", "show_fps", "volume", "fullscreen")
+
+
+def _bool(data, key, default):
+    v = data.get(key, default)
+    return bool(v) if isinstance(v, (bool, int)) else default
+
+
+def _volume(data):
+    v = data.get("volume", 0.8)
+    try:
+        return max(0.0, min(1.0, float(v)))
+    except (TypeError, ValueError):
+        return 0.8
 
 
 def load_settings(path=None):
@@ -17,10 +29,12 @@ def load_settings(path=None):
                 data = json.load(f)
         except Exception:
             data = {}
-    config.PERFORMANCE_MODE = bool(data.get("performance_mode", False))
-    config.SHOW_FPS = bool(data.get("show_fps", False))
-    config.FULLSCREEN = bool(data.get("fullscreen", False))
-    config.VOLUME = max(0.0, min(1.0, float(data.get("volume", 0.8))))
+        if not isinstance(data, dict):
+            data = {}
+    config.PERFORMANCE_MODE = _bool(data, "performance_mode", False)
+    config.SHOW_FPS = _bool(data, "show_fps", False)
+    config.FULLSCREEN = _bool(data, "fullscreen", False)
+    config.VOLUME = _volume(data)
 
 
 def save_settings(path=None):

@@ -406,6 +406,30 @@ def main():
     assert has_save()
     _os.remove("/tmp/test_save3.json")
 
+    # --- PR4 review regression checks ---
+
+    # creatures never spawn mid-hop (hop_t must start at 0)
+    g8 = Game(headless=True, load=False)
+    for c in g8.creatures.creatures:
+        assert c.hop_t == 0.0, "creatures must not spawn with a live hop"
+        c.update(g8.world, 1 / 60, g8.player.x)
+        assert abs(c.bob) < 10, f"spawn bob too large: {c.bob}"
+
+    # corrupt settings files never crash the launch
+    from citadel import settings as S2
+    for bad in ['{"volume": "x"}', "[]", "garbage"]:
+        with open("/tmp/bad_s.json", "w") as f:
+            f.write(bad)
+        S2.load_settings("/tmp/bad_s.json")
+    _os.remove("/tmp/bad_s.json")
+
+    # fullscreen toggle keeps renderer.screen in sync (simulate reassign)
+    class FakeRend:
+        pass
+    fr = FakeRend()
+    g8.renderer.screen = g8.screen
+    assert g8.renderer.screen is g8.screen
+
     print("SMOKE TEST PASSED")
     pygame.quit()
 

@@ -119,7 +119,6 @@ class Game:
     def _start_play(self):
         self.mode = "play"
         self.sounds.start_music()
-        from .save import has_save
         if "intro" not in self.tips_shown:
             self.tips_shown.add("intro")
             self.notify(
@@ -215,6 +214,7 @@ class Game:
                     flags = pygame.FULLSCREEN if config.FULLSCREEN else 0
                     self.screen = pygame.display.set_mode(
                         (config.SCREEN_W, config.SCREEN_H), flags)
+                    self.renderer.screen = self.screen
             elif event.key == pygame.K_EQUALS or event.key == pygame.K_KP_PLUS:
                 self.sounds.set_volume(config.VOLUME + 0.1)
                 self.notify(f"Volume {int(config.VOLUME * 100)}%")

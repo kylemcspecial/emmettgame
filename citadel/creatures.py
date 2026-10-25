@@ -29,7 +29,7 @@ class Creature:
         self.fed_this_round = False
         self.wander_t = 0.0
         self.dir = 1
-        self.hop_t = float(np.random.uniform(0, 3))
+        self.hop_t = 0.0                # active one-block hop countdown
         self.bob = 0.0
         self.bob_t = float(np.random.uniform(0, 6.28))
         self.seed = seed

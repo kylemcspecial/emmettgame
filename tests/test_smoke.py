@@ -206,6 +206,52 @@ def main():
     s = Sounds()
     s.play("wand")  # must not raise even when disabled
 
+    # --- regression checks from code review ---
+
+    # rune key shards drop keys; catalyst blooms drop catalysts
+    g3 = Game(headless=True, load=False)
+    key_drop = cat_drop = False
+    for c in range(g3.world.cols):
+        r = g3.world.surface_row(c)
+        for rr in (r, r - 1):
+            b = g3.world.get(rr, c)
+            if b == W.RUNE_KEY_BLOCK and not key_drop:
+                key_drop = g3.world.break_block(rr, c)[0] == "rune_key"
+            if b == W.CATALYST_BLOOM and not cat_drop:
+                cat_drop = g3.world.break_block(rr, c)[0] == "catalyst"
+    assert key_drop, "rune key shards must drop rune_key"
+    assert cat_drop, "catalyst blooms must drop catalyst"
+
+    # wand re-cast at befriended creature gives no harmony
+    c4 = g3.creatures.creatures[3]
+    while not c4.befriended:
+        g3.player.wand_timer = 0
+        g3._cast_wand(c4)
+    h_before = g3.shield.harmony
+    g3.player.wand_timer = 0
+    g3._cast_wand(c4)
+    assert g3.shield.harmony == h_before, "re-cast exploit must not grant harmony"
+
+    # shadow drain is time-based (small per frame, ~3/sec)
+    from citadel.pylons import Shadow
+    from citadel.genetics import GeneticTuner
+    sh = Shadow(col=50.0)
+    sh.x = 50.0
+    ga2 = GeneticTuner(g3.rng)
+    drain = sh.update(1 / 60, 0.3, 50.0, ga2, 10)
+    assert 0 < drain < 0.1, f"drain per frame should be tiny, got {drain}"
+
+    # depleted hotbar slot can be refilled
+    g3.inventory.hotbar[1] = ("stone", None)
+    assert g3.inventory.add("stone", 5)
+    assert g3.inventory.hotbar[1] == ("stone", 5)
+
+    # ledger renders with hotbar row (right-click store target exists)
+    g3.mode = "inventory"
+    g3.renderer.draw_inventory_screen(g3)
+    assert (3, 0) in g3.renderer.backpack_rects, "ledger must expose hotbar row"
+    g3.mode = "play"
+
     # victory path: all pylons + harmony banishes shadow
     for p in game.pylons.pylons:
         p.restored = True

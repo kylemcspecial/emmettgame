@@ -21,6 +21,7 @@ BERRY_BUSH = 9
 CASTLE_STONE = 10
 CASTLE_QUARTZ = 11
 RUNE_KEY_BLOCK = 12
+CATALYST_BLOOM = 13
 
 BLOCKS = {
     AIR: ("Air", None),
@@ -36,10 +37,12 @@ BLOCKS = {
     CASTLE_STONE: ("Castle Stone", (185, 190, 205)),
     CASTLE_QUARTZ: ("Castle Quartz", (250, 245, 255)),
     RUNE_KEY_BLOCK: ("Rune Key Shard", (200, 140, 255)),
+    CATALYST_BLOOM: ("Catalyst Bloom", (170, 130, 255)),
 }
 
 BREAKABLE = {GRASS, DIRT, STONE, WOOD, QUARTZ, CRYSTAL, STARLIGHT, THORNS,
-             BERRY_BUSH, CASTLE_STONE, CASTLE_QUARTZ, RUNE_KEY_BLOCK}
+             BERRY_BUSH, CASTLE_STONE, CASTLE_QUARTZ, RUNE_KEY_BLOCK,
+             CATALYST_BLOOM}
 DROPS = {
     GRASS: DIRT,
     DIRT: DIRT,
@@ -114,6 +117,15 @@ class World:
             if r >= 0 and self.grid[r, c] == AIR:
                 self.grid[r, c] = RUNE_KEY_BLOCK
                 placed += 1
+        placed = 0
+        attempts = 0
+        while placed < 3 and attempts < 400:
+            attempts += 1
+            c = int(self.rng.integers(4, self.cols - 4))
+            r = self.surface_row(c) - 1
+            if r >= 0 and self.grid[r, c] == AIR:
+                self.grid[r, c] = CATALYST_BLOOM
+                placed += 1
 
     def _scatter(self, block, n):
         placed = 0
@@ -168,11 +180,15 @@ class World:
         block = self.get(row, col)
         if block in BREAKABLE:
             self.grid[row, col] = AIR
-            drop = DROPS.get(block)
             if block == BERRY_BUSH:
                 return "berry", 2
             if block == THORNS:
                 return None, 0
+            if block == RUNE_KEY_BLOCK:
+                return "rune_key", 1
+            if block == CATALYST_BLOOM:
+                return "catalyst", 1
+            drop = DROPS.get(block)
             return drop, 1
         return None, 0
 

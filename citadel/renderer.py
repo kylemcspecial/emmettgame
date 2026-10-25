@@ -322,8 +322,8 @@ class Renderer:
             "heart of the realm to raise Harmony.", True, (80, 65, 50))
         s.blit(line3, (panel.x + 24, y)); y += 40
         inv = self.font.render(
-            "Backpack (click an item to move it to your hotbar):", True,
-            config.PALETTE["text"])
+            "Backpack (click: to hotbar. Right-click a hotbar slot below: to backpack)",
+            True, config.PALETTE["text"])
         s.blit(inv, (panel.x + 24, y)); y += 30
         self.backpack_rects = {}
         for r in range(3):
@@ -340,6 +340,28 @@ class Renderer:
                         ct = self.small.render(str(count), True, (40, 34, 28))
                         s.blit(ct, (rect.right - ct.get_width() - 2,
                                     rect.bottom - 16))
+        hot_y = y + 3 * 54 + 16
+        hot_label = self.small.render("Hotbar (right-click to store):", True,
+                                      (110, 90, 70))
+        s.blit(hot_label, (panel.x + 24, hot_y - 18))
+        for i, (item, count) in enumerate(game.inventory.hotbar):
+            x = panel.x + 24 + i * 58
+            rect = pygame.Rect(x, hot_y, 52, 48)
+            self.backpack_rects[(3, i)] = rect
+            pygame.draw.rect(s, (255, 220, 120) if i == game.inventory.selected
+                             else (215, 208, 190), rect, 2, border_radius=4)
+            if item:
+                name, color = ITEMS[item]
+                if item == "wand":
+                    pygame.draw.line(s, (150, 100, 60), rect.center,
+                                     (rect.center[0] + 12, rect.center[1] - 14), 3)
+                    pygame.draw.circle(s, (255, 250, 180),
+                                       (rect.center[0] + 13, rect.center[1] - 15), 4)
+                else:
+                    pygame.draw.rect(s, color, rect.inflate(-16, -16), border_radius=4)
+                if count:
+                    ct = self.small.render(str(count), True, (40, 34, 28))
+                    s.blit(ct, (rect.right - ct.get_width() - 2, rect.bottom - 16))
         hint = self.small.render(
             "E or Esc to close  |  Click backpack item: to hotbar  |  "
             "Right-click a hotbar row below: to backpack  |  F5 saves",

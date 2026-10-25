@@ -59,8 +59,8 @@ class Inventory:
         if item is None:
             return False
         for i, (it, ct) in enumerate(self.hotbar):
-            if it == item and ct is not None and ct < config.MAX_STACK:
-                self.hotbar[i] = (it, ct + amount)
+            if it == item and (ct is None or ct < config.MAX_STACK):
+                self.hotbar[i] = (it, (ct or 0) + amount)
                 return True
         for i, (it, ct) in enumerate(self.hotbar):
             if it is None:
@@ -69,8 +69,8 @@ class Inventory:
         for r in range(3):
             for c in range(9):
                 it, ct = self.backpack[r][c]
-                if it == item and ct is not None and ct < config.MAX_STACK:
-                    self.backpack[r][c] = (it, ct + amount)
+                if it == item and (ct is None or ct < config.MAX_STACK):
+                    self.backpack[r][c] = (it, (ct or 0) + amount)
                     return True
         for r in range(3):
             for c in range(9):
@@ -86,12 +86,6 @@ class Inventory:
             self.hotbar[self.selected] = (item, count if count else None)
             return item
         return None
-
-    def hotbar_slot(self, r, c):
-        """Ledger helper: treat (r, c) as a hotbar index when valid."""
-        if 0 <= c < 9 and r == 0:
-            return self.hotbar[c]
-        return (None, None)
 
     def to_backpack(self, r, c):
         """Move a hotbar item into a free backpack slot."""

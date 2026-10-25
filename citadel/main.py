@@ -45,6 +45,7 @@ class Game:
         self.active_pylon = None
         self.mouse_held = {"left": False, "right": False}
         self.breaking = None        # (row, col, progress)
+        self._break_sound_tile = None
         self.running = True
         if load and not headless:
             from .save import has_save
@@ -138,6 +139,7 @@ class Game:
             if event.button == 1:
                 self.mouse_held["left"] = False
                 self.breaking = None
+                self._break_sound_tile = None
             elif event.button == 3:
                 self.mouse_held["right"] = False
 
@@ -166,9 +168,10 @@ class Game:
         if button == 3:
             for (r, c), rect in self.renderer.backpack_rects.items():
                 if rect.collidepoint(pos):
-                    item, count = self.inventory.hotbar_slot(r, c)
-                    if item and self.inventory.to_backpack(r, c):
-                        self.notify(f"Moved {ITEMS[item][0]} to backpack.")
+                    if r == 3:
+                        item, count = self.inventory.hotbar[c]
+                        if item and self.inventory.to_backpack(0, c):
+                            self.notify(f"Moved {ITEMS[item][0]} to backpack.")
                     return
         for (r, c), rect in self.renderer.backpack_rects.items():
             if rect.collidepoint(pos):
@@ -218,11 +221,13 @@ class Game:
                 return
         block = self.world.get(row, col)
         if block in W.BREAKABLE:
+            if self._break_sound_tile != (row, col):
+                self.sounds.play("break")
+                self._break_sound_tile = (row, col)
             self.breaking = [row, col, 0.0]
-            self.sounds.play("break")
 
     def _cast_wand(self, creature):
-        if self.player.wand_timer > 0:
+        if self.player.wand_timer > 0 or creature.befriended:
             return
         self.player.wand_timer = config.WAND_COOLDOWN
         self.particles.emit(creature.x, creature.y, creature.color, 16)

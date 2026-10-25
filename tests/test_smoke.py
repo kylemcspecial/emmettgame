@@ -136,7 +136,7 @@ def main():
     from citadel.save import save_game, load_game
     path = save_game(game, "/tmp/test_save.json")
     data = json.load(open(path))
-    assert data["version"] == 1
+    assert data["version"] == 2
     harmony_before = game.shield.harmony
     friends_before = sum(c.befriended for c in game.creatures.creatures)
     game2 = Game(headless=True, load=False)
@@ -262,6 +262,74 @@ def main():
     for _ in range(5):
         game.frame()
     assert game.mode == "victory"
+
+    # --- polish feature checks ---
+
+    # title screen -> play transition
+    g4 = Game(headless=True, load=False)
+    assert g4.mode == "title"
+    g4.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert g4.mode == "play"
+
+    # pylon progression gating: only first pylon awake initially
+    assert g4.pylons.pylons[0].awakened
+    assert sum(1 for p in g4.pylons.pylons if p.awakened) == 1
+    solved = g4.pylons.pylons[0]
+    solved.restored = True
+    nxt = g4.pylons.on_restored(solved)
+    assert nxt is not None and nxt.awakened
+    assert sum(1 for p in g4.pylons.pylons if p.awakened) == 2
+
+    # creature naming flow (requires play mode)
+    c5 = g4.creatures.creatures[0]
+    g4.player.x = c5.x
+    g4.creatures.befriend(c5, g4.castle.x)
+    g4.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_n,
+                                       unicode="n"))
+    assert g4.naming is c5
+    for ch in "Emmett":
+        g4.handle_event(pygame.event.Event(pygame.KEYDOWN,
+                                           key=ord(ch), unicode=ch))
+    g4.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert c5.name == "Emmett", c5.name
+    assert g4.naming is None
+
+    # unique creature sprites: two creatures of same species differ
+    from citadel.sprites import get_creature_sprites
+    a = get_creature_sprites("Pebblepuff", (255, 170, 120), 11)
+    b = get_creature_sprites("Pebblepuff", (255, 170, 120), 12)
+    assert pygame.image.tostring(a[0], "RGBA") != pygame.image.tostring(b[0], "RGBA")
+
+    # naming + awakening survive save/load
+    from citadel.save import save_game as sg, load_game as lg
+    p6 = sg(g4, "/tmp/test_save2.json")
+    g5 = Game(headless=True, load=False)
+    lg(g5, "/tmp/test_save2.json")
+    assert g5.creatures.creatures[0].name == "Emmett"
+    assert g5.pylons.pylons[1].awakened
+    import os as _os
+    _os.remove(p6)
+
+    # hints screen opens and closes
+    g5.mode = "play"
+    g5.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_h))
+    assert g5.mode == "hints"
+    g5.frame()
+    g5.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_h))
+    assert g5.mode == "play"
+
+    # incompatible version rejected -> fresh realm path works
+    import json as _json
+    bad = {"version": 99, "world": {"cols": 1, "rows": 1}}
+    with open("/tmp/bad_save.json", "w") as f:
+        _json.dump(bad, f)
+    g6 = Game(headless=True, load=False)
+    try:
+        lg(g6, "/tmp/bad_save.json")
+        raise AssertionError("should reject version 99")
+    except ValueError:
+        pass
+    _os.remove("/tmp/bad_save.json")
 
     print("SMOKE TEST PASSED")
     pygame.quit()

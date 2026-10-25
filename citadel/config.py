@@ -24,6 +24,9 @@ SAVE_PATH = "savegame.json"
 MAX_STACK = 99
 
 RNG_SEED = 20261025
+DAY_LENGTH = 120.0        # seconds per full day/night cycle
+PERFORMANCE_MODE = False  # True = skip particles/glow for weak hardware
+SHOW_FPS = False
 
 PALETTE = {
     "bg_top": (110, 150, 220),

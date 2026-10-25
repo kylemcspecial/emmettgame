@@ -101,7 +101,9 @@ class Game:
         self.fountain = Fountain(self.castle)
         self.world = W.World(self.rng, castle_col=self.castle.col)
         self.ga = GeneticTuner(self.rng)
-        self.player = Player(self.world, col=8)
+        # spawn AT the castle site: the banner, fountain, and deposits are
+        # all visible the moment the game starts
+        self.player = Player(self.world, col=self.castle.col + 6)
         self.inventory = self._make_inventory()
         self.creatures = CreatureManager(self.rng, self.world, self.ga)
         self.pylons = PylonManager(self.rng, self.world, self.ga)

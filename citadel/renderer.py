@@ -19,6 +19,10 @@ class Camera:
     def follow(self, px, py, dt):
         tx = px - config.SCREEN_W / 2
         ty = py - config.SCREEN_H / 2
+        if self.x == 0.0 and self.y == 0.0:
+            # first frame after spawn: snap instead of a full-second scroll
+            self.x, self.y = tx, ty
+            return
         self.x += (tx - self.x) * min(1.0, 6.0 * dt)
         self.y += (ty - self.y) * min(1.0, 6.0 * dt)
 

@@ -159,12 +159,20 @@ class DropManager:
             jx = x + self.rng.uniform(-8, 8)
             self.drops.append(Drop(item, jx, y, self.rng))
 
-    def update(self, dt, player, inventory, magnet=config.TILE * 1.6):
+    def update(self, dt, player, inventory, magnet=config.TILE * 2.2):
         picked = []
         px, py = player.center()
+        attract = magnet * 2.2
         for d in self.drops:
             d.update(dt)
-            if abs(d.x - px) < magnet and abs(d.y - py) < magnet:
+            dx, dy = px - d.x, py - d.y
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist < attract and dist > 1:
+                # drift toward the player so loot feels like it's collected
+                pull = min(1.0, 260.0 * dt / max(dist, 1))
+                d.x += dx * pull
+                d.y += dy * pull
+            if dist < magnet:
                 if inventory.add(d.item, 1):
                     picked.append(d)
                     if self.sounds is not None:

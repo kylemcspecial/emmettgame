@@ -61,13 +61,28 @@ class Sounds:
         self.enabled = False
         self.bank = {}
         self.music_on = False
+        self._volume = float(getattr(config, "VOLUME", 0.8))
         try:
             os.environ.setdefault("SDL_AUDIODRIVER", "alsa")
             pygame.mixer.init(frequency=SAMPLE_RATE, size=-16, channels=2)
             self._build()
             self.enabled = True
+            self.apply_volume()
         except Exception:
             self.enabled = False
+
+    def apply_volume(self):
+        if not self.enabled:
+            return
+        try:
+            pygame.mixer.music.set_volume(self._volume * 0.5)
+        except Exception:
+            pass
+
+    def set_volume(self, v):
+        self._volume = max(0.0, min(1.0, float(v)))
+        config.VOLUME = self._volume
+        self.apply_volume()
 
     def start_music(self):
         if not self.enabled or self.music_on:
@@ -101,6 +116,8 @@ class Sounds:
     def play(self, name):
         if self.enabled and name in self.bank:
             try:
-                self.bank[name].play()
+                snd = self.bank[name]
+                snd.set_volume(self._volume)
+                snd.play()
             except Exception:
                 pass

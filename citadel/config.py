@@ -27,6 +27,8 @@ RNG_SEED = 20261025
 DAY_LENGTH = 120.0        # seconds per full day/night cycle
 PERFORMANCE_MODE = False  # True = skip particles/glow for weak hardware
 SHOW_FPS = False
+FULLSCREEN = False
+VOLUME = 0.8
 
 PALETTE = {
     "bg_top": (110, 150, 220),

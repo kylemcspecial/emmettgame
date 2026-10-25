@@ -48,18 +48,27 @@ class Renderer:
 
     def _make_wizard_frames(self):
         frames = []
-        for phase in range(2):
+        for phase in range(3):  # 0 stand, 1 walk-bob, 2 jump
             surf = pygame.Surface((config.TILE, config.TILE + 8), pygame.SRCALPHA)
-            bob = 1 if phase else 0
-            pygame.draw.rect(surf, (60, 70, 160, 255),
-                             (10, 14 + bob, 12, 20))
-            pygame.draw.circle(surf, (255, 226, 190, 255), (16, 10 + bob), 7)
+            bob = 1 if phase == 1 else 0
+            jump = phase == 2
+            lift = -2 if jump else 0
+            robe = (10, 16 + bob + lift, 12, 18) if jump else (10, 14 + bob, 12, 20)
+            pygame.draw.rect(surf, (60, 70, 160, 255), robe)
+            pygame.draw.circle(surf, (255, 226, 190, 255),
+                               (16, 10 + bob + lift), 7)
             pygame.draw.polygon(surf, (40, 40, 90, 255),
-                                [(6, 12 + bob), (26, 12 + bob), (16, bob)])
+                                [(6, 12 + bob + lift),
+                                 (26, 12 + bob + lift), (16, bob + lift)])
+            wand_y = 14 + bob if jump else 16 + bob
             pygame.draw.polygon(surf, (150, 220, 255, 255),
-                                [(24, 16 + bob), (30, 22 + bob), (24, 24 + bob)])
+                                [(24, wand_y), (32, wand_y - 10),
+                                 (24, wand_y + 2)])
             pygame.draw.circle(surf, (255, 250, 180, 255),
-                               (30, 22 + bob), 3 + (1 if phase else 0))
+                               (32, wand_y - 11), 4 if jump else 3)
+            if jump:
+                pygame.draw.polygon(surf, (255, 226, 190, 255),
+                                    [(8, 34), (14, 30), (10, 38)])
             frames.append(surf)
         return frames
 
@@ -205,6 +214,35 @@ class Renderer:
         if glow_points:
             self.draw_glow(glow_points)
 
+    def draw_break_crack(self, row, col, progress):
+        """progress 0..1 -> crack overlay grows."""
+        x, y = self.cam.apply(col * config.TILE, row * config.TILE)
+        rect = pygame.Rect(x, y, config.TILE, config.TILE)
+        shade = pygame.Surface((config.TILE, config.TILE), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, int(60 * progress)))
+        self.screen.blit(shade, rect.topleft)
+        n = int(progress * 4) + 1
+        rng = np.random.default_rng((row + 1) * (col + 7))
+        for i in range(n):
+            x0 = int(rng.integers(2, config.TILE - 2))
+            y0 = int(rng.integers(2, config.TILE - 2))
+            pygame.draw.line(shade, (255, 255, 255, 140),
+                             (x0, y0), (x0 + 6, y0 + 5), 1)
+        self.screen.blit(shade, rect.topleft)
+
+    def draw_wand_beam(self, x0, y0, x1, y1, t):
+        """glowing beam for ~t seconds after cast; fade out."""
+        if t <= 0:
+            return
+        alpha = max(0, min(255, int(255 * t / 0.25)))
+        sx, sy = self.cam.apply(x0, y0)
+        ex, ey = self.cam.apply(x1, y1)
+        beam = pygame.Surface((config.SCREEN_W, config.SCREEN_H),
+                              pygame.SRCALPHA)
+        pygame.draw.line(beam, (150, 220, 255, alpha), (sx, sy), (ex, ey), 4)
+        pygame.draw.line(beam, (255, 255, 255, alpha), (sx, sy), (ex, ey), 2)
+        self.screen.blit(beam, (0, 0))
+
     def highlight_tile(self, row, col, ok=True):
         x, y = self.cam.apply(col * config.TILE, row * config.TILE)
         rect = pygame.Rect(x, y, config.TILE, config.TILE)
@@ -213,12 +251,43 @@ class Renderer:
 
     def draw_player(self, player):
         x, y = self.cam.apply(player.x, player.y)
-        moving = abs(player.vx) > 1
-        frame = self.wizard[pygame.time.get_ticks() // 200 % 2] if moving \
-            else self.wizard[0]
+        if not player.on_ground:
+            frame = self.wizard[2]
+        else:
+            moving = abs(player.vx) > 1
+            frame = self.wizard[pygame.time.get_ticks() // 200 % 2] \
+                if moving else self.wizard[0]
         if player.facing < 0:
             frame = pygame.transform.flip(frame, True, False)
         self.screen.blit(frame, frame.get_rect(center=(x, y)))
+
+    def draw_weather(self, t, day_t):
+        """Drifting pollen by day, fireflies at night."""
+        if config.PERFORMANCE_MODE:
+            return
+        night = np.sin((day_t - 0.25) * 2 * np.pi) > 0
+        rng = np.random.default_rng(1234)
+        s = self.screen
+        for i in range(18):
+            speed = 12 + (i % 3) * 6
+            x = (rng.integers(0, config.SCREEN_W) - t * speed) \
+                % config.SCREEN_W
+            y = (rng.integers(60, config.SCREEN_H - 80)
+                 + np.sin(t * 0.7 + i) * 12)
+            if night:
+                tw = 0.5 + 0.5 * np.sin(t * 3 + i * 1.7)
+                c = (255, 240, 150)
+                r = 2
+                glow = pygame.Surface((8, 8), pygame.SRCALPHA)
+                a = int(120 * tw)
+                pygame.draw.circle(glow, (*c, a), (4, 4), 3)
+                s.blit(glow, (int(x) - 4, int(y) - 4))
+            else:
+                c = (255, 255, 210)
+                r = 2
+                surf = pygame.Surface((6, 6), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (*c, 90), (3, 3), 2)
+                s.blit(surf, (int(x) - 3, int(y) - 3))
 
     def draw_castle_banner(self, castle, world):
         col = castle.col
@@ -563,12 +632,18 @@ class Renderer:
         pulse = 3 * int(np.sin(pygame.time.get_ticks() * 0.005))
         pygame.draw.rect(s, (255, 214, 92), self.title_button_rect.inflate(
             pulse * 2, pulse * 2), border_radius=14)
-        label = self.big.render("Play!", True, (60, 40, 20))
+        from .save import has_save
+        label_txt = "Continue!" if has_save() else "Play!"
+        label = self.big.render(label_txt, True, (60, 40, 20))
         s.blit(label, label.get_rect(center=self.title_button_rect.center))
         hint = self.small.render(
             "or press Enter/Space  -  H for help  -  gamepads work too!",
             True, (200, 200, 215))
         s.blit(hint, hint.get_rect(center=(config.SCREEN_W // 2, 470)))
+        ded = self.small.render(
+            "made with love for Emmett", True, (255, 214, 92))
+        s.blit(ded, (config.SCREEN_W - ded.get_width() - 16,
+                     config.SCREEN_H - ded.get_height() - 12))
 
     def draw_hints(self):
         s = self.screen

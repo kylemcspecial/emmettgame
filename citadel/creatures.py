@@ -49,9 +49,13 @@ class Creature:
         self.bob = np.sin(self.bob_t) * 3
         if self.befriended:
             target_x = self.home_x if self.home_x is not None else self.x
+            max_x = (world.cols - 1) * config.TILE
+            target_x = max(config.TILE, min(max_x, target_x))
             diff = target_x - self.x
             if abs(diff) > 4:
-                self.x += np.sign(diff) * config.MOVE_SPEED * 0.6 * dt
+                self.x = max(config.TILE,
+                             min(max_x,
+                                 self.x + np.sign(diff) * config.MOVE_SPEED * 0.6 * dt))
                 self.dir = 1 if diff > 0 else -1
             self.col = self.x / config.TILE
             self.y = (world.surface_row(int(self.col)) - 0.5) * config.TILE
@@ -67,6 +71,9 @@ class Creature:
         step = self.dir * config.MOVE_SPEED * 0.35 * dt
         nx = self.x + step
         col = int(nx / config.TILE)
+        if col < 0 or col >= world.cols:
+            self.dir = -self.dir
+            return
         cur_row = world.surface_row(int(self.x / config.TILE))
         tgt_row = world.surface_row(col)
         clear = (world.in_bounds(tgt_row, col)

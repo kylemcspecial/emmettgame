@@ -253,6 +253,7 @@ class Game:
             elif self.mode == "play":
                 if event.button == 1:
                     self.mouse_held["left"] = True
+                    self._left_action(event.pos)
                 elif event.button == 3:
                     self.mouse_held["right"] = True
                     self._right_action(event.pos)
@@ -266,9 +267,19 @@ class Game:
         elif event.type == pygame.JOYBUTTONDOWN:
             self._joypad_button(event.button)
         elif event.type == pygame.JOYDEVICEADDED:
-            if not self.gamepad.enabled and self.gamepad.connect():
-                self.notify("Gamepad connected! Left stick to move, "
-                             "A to jump, B to cast your wand.", 4)
+            try:
+                if not self.gamepad.enabled and self.gamepad.connect():
+                    self.notify("Gamepad connected! Left stick to move, "
+                                "A to jump, B to cast your wand.", 4)
+            except Exception:
+                self.gamepad.enabled = False
+        elif event.type == pygame.JOYDEVICEREMOVED:
+            try:
+                self.gamepad.enabled = False
+                self.gamepad.js = None
+                self.notify("Gamepad disconnected.", 2)
+            except Exception:
+                pass
 
     def _joypad_button(self, button):
         if self.mode == "inventory":
@@ -695,7 +706,7 @@ class Game:
 
     def frame(self):
         dt = self.clock.tick(config.FPS) / 1000.0
-        for event in pygame.event.get():
+        for event in pygame.event.get(exclude=pygame.MOUSEMOTION):
             self.handle_event(event)
         self.update(dt)
         self.draw()
@@ -703,9 +714,21 @@ class Game:
 
     def run(self, max_frames=None):
         frames = 0
+        autosave_t = 0.0
         while self.running:
-            self.frame()
+            dt = self.clock.tick(config.FPS) / 1000.0
+            for event in pygame.event.get(exclude=pygame.MOUSEMOTION):
+                self.handle_event(event)
+            self.update(dt)
+            self.draw()
             frames += 1
+            autosave_t += dt
+            if not self.headless and autosave_t >= 30.0:
+                autosave_t = 0.0
+                try:
+                    save_game(self)
+                except Exception:
+                    pass
             if max_frames and frames >= max_frames:
                 break
         pygame.quit()

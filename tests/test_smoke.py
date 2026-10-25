@@ -497,3 +497,32 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def check_py39_fstrings():
+    """The game targets Python 3.9+ (Raspberry Pi OS). Backslashes inside
+    f-string expressions are a 3.12-only feature - scan the whole repo."""
+    import ast
+    import os
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for root, dirs, files in os.walk(root_dir):
+        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", ".venv")]
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            p = os.path.join(root, fn)
+            src = open(p, encoding="utf-8").read()
+            tree = ast.parse(src)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.JoinedStr):
+                    for v in node.values:
+                        if isinstance(v, ast.FormattedValue):
+                            seg = ast.get_source_segment(src, v) or ""
+                            assert "\\" not in seg, (
+                                f"{p}:{v.lineno} uses a backslash inside an "
+                                "f-string expression - not valid on Python "
+                                "3.9-3.11 (Raspberry Pi OS)"
+                            )
+
+
+check_py39_fstrings()

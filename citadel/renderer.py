@@ -6,6 +6,8 @@ from . import config
 from .graphics import Textures  # noqa: F401
 from .inventory import ITEMS
 from .pylons import RUNE_GLYPHS, RUNE_NAMES
+
+HEART = "\u2665"
 from .world import BLOCKS
 
 
@@ -536,7 +538,8 @@ class Renderer:
         s.blit(title, (panel.centerx - title.get_width() // 2, panel.y + 16))
         y = panel.y + 66
         friends = ", ".join(
-            f"{c.name or c.species} {'\u2665' if c.befriended else '?'}"
+            f"{c.name or c.species} " + (
+                HEART if c.befriended else "?")
             for c in game.creatures.creatures
         )
         line1 = self.font.render(f"Citizens of the realm:  {friends}", True, (80, 65, 50))

@@ -357,11 +357,15 @@ class Renderer:
         friends = sum(1 for c in game.creatures.creatures if c.befriended)
         total_friends = len(game.creatures.creatures)
         restored = len(game.pylons.pylons) - len(game.pylons.unrestored())
+        awake = sum(1 for p in game.pylons.pylons if p.awakened)
         total_pylons = len(game.pylons.pylons)
         harmony = game.shield.harmony
+        pyl_label = (f"Restore pylons ({restored}/{awake})"
+                     if awake < total_pylons
+                     else f"Restore pylons ({restored}/{total_pylons})")
         quests = [
             (f"Befriend creatures ({friends}/{total_friends})", friends >= total_friends),
-            (f"Restore pylons ({restored}/{total_pylons})", restored >= total_pylons),
+            (pyl_label, restored >= total_pylons),
             ("Fill Harmony to 100", harmony >= 100),
         ]
         done = all(ok for _, ok in quests)

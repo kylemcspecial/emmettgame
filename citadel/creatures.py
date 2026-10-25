@@ -34,6 +34,7 @@ class Creature:
         self.bob_t = float(np.random.uniform(0, 6.28))
         self.seed = seed
         self.name = None               # kid-assigned name (Friendship Album)
+        self.home_x = None             # set on befriending; castle-side home
 
     def advance_charm(self):
         if self.hearts > 0:
@@ -47,7 +48,7 @@ class Creature:
         self.bob_t += dt * 2.5
         self.bob = np.sin(self.bob_t) * 3
         if self.befriended:
-            target_x = self.home_x
+            target_x = self.home_x if self.home_x is not None else self.x
             diff = target_x - self.x
             if abs(diff) > 4:
                 self.x += np.sign(diff) * config.MOVE_SPEED * 0.6 * dt
